@@ -1,4 +1,26 @@
-const API_BASE = "/api";
+// Default to same-origin API. If deploying frontend separately (e.g. CDN),
+// set VITE_API_BASE_URL to your backend origin + "/api" (or just the origin and keep API_BASE as "/api").
+// Examples:
+// - VITE_API_BASE_URL=https://api.example.com/api
+// - VITE_API_BASE_URL=https://api.example.com  (we'll append "/api" below)
+const rawBase = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+const normalizedBase = rawBase?.replace(/\/+$/, "");
+
+// Fix: Convert HTTPS localhost to HTTP (local development servers typically use HTTP)
+// This prevents ERR_SSL_PROTOCOL_ERROR when VITE_API_BASE_URL is set to https://localhost
+let fixedBase = normalizedBase;
+if (normalizedBase && /^https:\/\/localhost/i.test(normalizedBase)) {
+  fixedBase = normalizedBase.replace(/^https:/i, "http:");
+  console.warn(
+    `[api.ts] Converted HTTPS localhost to HTTP: ${normalizedBase} -> ${fixedBase}`
+  );
+}
+
+const API_BASE = fixedBase
+  ? fixedBase.endsWith("/api")
+    ? fixedBase
+    : `${fixedBase}/api`
+  : "/api";
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem("token");

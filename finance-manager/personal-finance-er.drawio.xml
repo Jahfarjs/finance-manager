@@ -1,0 +1,74 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="ER Diagram">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- USER -->
+        <mxCell id="user" value="USER&#xa;----------------&#xa;_id (PK)&#xa;name&#xa;email&#xa;phone (unique)&#xa;password&#xa;createdAt"
+          style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+          vertex="1" parent="1">
+          <mxGeometry x="480" y="40" width="260" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- DAILY EXPENSE -->
+        <mxCell id="expense" value="DAILY_EXPENSE&#xa;----------------&#xa;_id (PK)&#xa;userId (FK)&#xa;date&#xa;expenses[]&#xa;total (auto)&#xa;grandTotal (auto)&#xa;salaryCredited&#xa;balance (auto)"
+          style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;"
+          vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="300" height="260" as="geometry"/>
+        </mxCell>
+
+        <!-- MONTHLY GOAL -->
+        <mxCell id="goal" value="MONTHLY_GOAL&#xa;----------------&#xa;_id (PK)&#xa;userId (FK)&#xa;goalName&#xa;status"
+          style="rounded=1;whiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;"
+          vertex="1" parent="1">
+          <mxGeometry x="400" y="300" width="260" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- EMI -->
+        <mxCell id="emi" value="EMI&#xa;----------------&#xa;_id (PK)&#xa;userId (FK)&#xa;emiTitle&#xa;startMonth&#xa;emiAmountPerMonth&#xa;emiDuration&#xa;remainingAmount&#xa;emiSchedule[]"
+          style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;"
+          vertex="1" parent="1">
+          <mxGeometry x="760" y="300" width="320" height="260" as="geometry"/>
+        </mxCell>
+
+        <!-- PLAN -->
+        <mxCell id="plan" value="PLAN&#xa;----------------&#xa;_id (PK)&#xa;userId (FK)&#xa;planDescription&#xa;status"
+          style="rounded=1;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;"
+          vertex="1" parent="1">
+          <mxGeometry x="80" y="620" width="260" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- FINANCE -->
+        <mxCell id="finance" value="FINANCE&#xa;----------------&#xa;_id (PK)&#xa;userId (FK)&#xa;debitList[]&#xa;creditList[]&#xa;totalDebit (auto)&#xa;totalCredit (auto)"
+          style="rounded=1;whiteSpace=wrap;fillColor=#fad7ac;strokeColor=#b46504;"
+          vertex="1" parent="1">
+          <mxGeometry x="760" y="620" width="320" height="240" as="geometry"/>
+        </mxCell>
+
+        <!-- RELATIONSHIPS -->
+        <mxCell id="r1" style="endArrow=block;html=1;" edge="1" parent="1" source="user" target="expense">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r2" style="endArrow=block;html=1;" edge="1" parent="1" source="user" target="goal">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r3" style="endArrow=block;html=1;" edge="1" parent="1" source="user" target="emi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r4" style="endArrow=block;html=1;" edge="1" parent="1" source="user" target="plan">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="r5" style="endArrow=block;html=1;" edge="1" parent="1" source="user" target="finance">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

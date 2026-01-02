@@ -17,6 +17,12 @@ import type {
   ExpenseItem,
 } from "@shared/schema";
 import { addMonths, format, parse } from "date-fns";
+import { UserModel } from "./models/User";
+import { DailyExpenseModel } from "./models/DailyExpense";
+import { GoalModel } from "./models/Goal";
+import { EMIModel } from "./models/EMI";
+import { PlanModel } from "./models/Plan";
+import { FinanceModel } from "./models/Finance";
 
 export interface IStorage {
   // User methods
@@ -59,6 +65,344 @@ export interface IStorage {
   removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance>;
 }
 
+export class MongoStorage implements IStorage {
+  // User methods
+  async getUser(id: string): Promise<User | undefined> {
+    const user = await UserModel.findOne({ id }).lean();
+    return user || undefined;
+  }
+
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    const user = await UserModel.findOne({ phone }).lean();
+    return user || undefined;
+  }
+
+  async createUser(userData: InsertUser): Promise<User> {
+    const id = randomUUID();
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const user: User = {
+      id,
+      name: userData.name,
+      email: userData.email,
+      phone: userData.phone,
+      password: hashedPassword,
+      createdAt: new Date().toISOString(),
+    };
+    
+    await UserModel.create(user);
+    
+    // Initialize finance for user
+    const financeId = randomUUID();
+    await FinanceModel.create({
+      id: financeId,
+      userId: id,
+      debitList: [],
+      creditList: [],
+      totalDebit: 0,
+      totalCredit: 0,
+    });
+    
+    return user;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+    const user = await UserModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return user || undefined;
+  }
+
+  // Daily Expense methods
+  async getExpenses(userId: string): Promise<DailyExpense[]> {
+    const expenses = await DailyExpenseModel.find({ userId })
+      .sort({ date: -1 })
+      .lean();
+    return expenses;
+  }
+
+  async getExpense(id: string): Promise<DailyExpense | undefined> {
+    const expense = await DailyExpenseModel.findOne({ id }).lean();
+    return expense || undefined;
+  }
+
+  async createExpense(userId: string, data: InsertDailyExpense): Promise<DailyExpense> {
+    const id = randomUUID();
+    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const expense: DailyExpense = {
+      id,
+      userId,
+      date: data.date,
+      expenses: data.expenses,
+      total,
+      salaryCredited: data.salaryCredited || 0,
+    };
+    await DailyExpenseModel.create(expense);
+    return expense;
+  }
+
+  async updateExpense(id: string, data: InsertDailyExpense): Promise<DailyExpense | undefined> {
+    const existingExpense = await DailyExpenseModel.findOne({ id }).lean();
+    if (!existingExpense) return undefined;
+    
+    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const updatedExpense = await DailyExpenseModel.findOneAndUpdate(
+      { id },
+      {
+        $set: {
+          date: data.date,
+          expenses: data.expenses,
+          total,
+          salaryCredited: data.salaryCredited !== undefined ? data.salaryCredited : existingExpense.salaryCredited,
+        },
+      },
+      { new: true, lean: true }
+    );
+    return updatedExpense || undefined;
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    const result = await DailyExpenseModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // Goal methods
+  async getGoals(userId: string): Promise<Goal[]> {
+    const goals = await GoalModel.find({ userId }).lean();
+    return goals;
+  }
+
+  async getGoal(id: string): Promise<Goal | undefined> {
+    const goal = await GoalModel.findOne({ id }).lean();
+    return goal || undefined;
+  }
+
+  async createGoal(userId: string, data: InsertGoal): Promise<Goal> {
+    const id = randomUUID();
+    const goal: Goal = {
+      id,
+      userId,
+      goalName: data.goalName,
+      status: "pending",
+    };
+    await GoalModel.create(goal);
+    return goal;
+  }
+
+  async updateGoal(id: string, data: Partial<Goal>): Promise<Goal | undefined> {
+    const goal = await GoalModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return goal || undefined;
+  }
+
+  async deleteGoal(id: string): Promise<boolean> {
+    const result = await GoalModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // EMI methods
+  async getEmis(userId: string): Promise<EMI[]> {
+    const emis = await EMIModel.find({ userId }).lean();
+    return emis;
+  }
+
+  async getEmi(id: string): Promise<EMI | undefined> {
+    const emi = await EMIModel.findOne({ id }).lean();
+    return emi || undefined;
+  }
+
+  async createEmi(userId: string, data: InsertEMI): Promise<EMI> {
+    const id = randomUUID();
+    const startDate = parse(data.startMonth, "yyyy-MM", new Date());
+    const totalAmount = data.emiAmountPerMonth * data.emiDuration;
+    
+    // Generate EMI schedule
+    const emiSchedule: EMIScheduleItem[] = [];
+    for (let i = 0; i < data.emiDuration; i++) {
+      const month = addMonths(startDate, i);
+      emiSchedule.push({
+        month: format(month, "yyyy-MM"),
+        amount: data.emiAmountPerMonth,
+        status: "unpaid",
+      });
+    }
+    
+    const emi: EMI = {
+      id,
+      userId,
+      emiTitle: data.emiTitle,
+      startMonth: data.startMonth,
+      emiAmountPerMonth: data.emiAmountPerMonth,
+      emiDuration: data.emiDuration,
+      emiSchedule,
+      remainingAmount: totalAmount,
+      totalAmount,
+    };
+    await EMIModel.create(emi);
+    return emi;
+  }
+
+  async updateEmiSchedule(id: string, monthIndex: number, status: "paid" | "unpaid"): Promise<EMI | undefined> {
+    const emi = await EMIModel.findOne({ id }).lean();
+    if (!emi || monthIndex < 0 || monthIndex >= emi.emiSchedule.length) return undefined;
+    
+    // Update the specific schedule item
+    const updatePath = `emiSchedule.${monthIndex}.status`;
+    await EMIModel.updateOne(
+      { id },
+      { $set: { [updatePath]: status } }
+    );
+    
+    // Recalculate remaining amount
+    const updatedEmi = await EMIModel.findOne({ id }).lean();
+    if (!updatedEmi) return undefined;
+    
+    const paidAmount = updatedEmi.emiSchedule
+      .filter((s) => s.status === "paid")
+      .reduce((sum, s) => sum + s.amount, 0);
+    
+    const finalEmi = await EMIModel.findOneAndUpdate(
+      { id },
+      { $set: { remainingAmount: updatedEmi.totalAmount - paidAmount } },
+      { new: true, lean: true }
+    );
+    
+    return finalEmi || undefined;
+  }
+
+  async deleteEmi(id: string): Promise<boolean> {
+    const result = await EMIModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // Plan methods
+  async getPlans(userId: string): Promise<Plan[]> {
+    const plans = await PlanModel.find({ userId }).lean();
+    return plans;
+  }
+
+  async getPlan(id: string): Promise<Plan | undefined> {
+    const plan = await PlanModel.findOne({ id }).lean();
+    return plan || undefined;
+  }
+
+  async createPlan(userId: string, data: InsertPlan): Promise<Plan> {
+    const id = randomUUID();
+    const plan: Plan = {
+      id,
+      userId,
+      planDescription: data.planDescription,
+      status: "not_worked",
+    };
+    await PlanModel.create(plan);
+    return plan;
+  }
+
+  async updatePlan(id: string, data: Partial<Plan>): Promise<Plan | undefined> {
+    const plan = await PlanModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return plan || undefined;
+  }
+
+  async deletePlan(id: string): Promise<boolean> {
+    const result = await PlanModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // Finance methods
+  async getFinance(userId: string): Promise<Finance> {
+    let finance = await FinanceModel.findOne({ userId }).lean<Finance>();
+    if (!finance) {
+      const id = randomUUID();
+      const newFinance: Finance = {
+        id,
+        userId,
+        debitList: [],
+        creditList: [],
+        totalDebit: 0,
+        totalCredit: 0,
+      };
+      await FinanceModel.create(newFinance);
+      finance = newFinance;
+    } else {
+      // Remove _id and __v from lean() result to maintain API contract
+      const { _id, __v, ...financeWithoutId } = finance as any;
+      finance = financeWithoutId as Finance;
+    }
+    return finance;
+  }
+
+  async addFinanceEntry(userId: string, type: "debit" | "credit", entry: FinanceEntry): Promise<Finance> {
+    const finance = await this.getFinance(userId);
+    
+    if (type === "debit") {
+      finance.debitList.push(entry);
+      finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
+    } else {
+      finance.creditList.push(entry);
+      finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
+    }
+    
+    const updatedFinance = await FinanceModel.findOneAndUpdate(
+      { userId },
+      {
+        $set: {
+          debitList: finance.debitList,
+          creditList: finance.creditList,
+          totalDebit: finance.totalDebit,
+          totalCredit: finance.totalCredit,
+        },
+      },
+      { new: true, lean: true }
+    );
+    
+    if (updatedFinance) {
+      const { _id, __v, ...financeWithoutId } = updatedFinance as any;
+      return financeWithoutId as Finance;
+    }
+    return finance;
+  }
+
+  async removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance> {
+    const finance = await this.getFinance(userId);
+    
+    if (type === "debit" && index >= 0 && index < finance.debitList.length) {
+      finance.debitList.splice(index, 1);
+      finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
+    } else if (type === "credit" && index >= 0 && index < finance.creditList.length) {
+      finance.creditList.splice(index, 1);
+      finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
+    }
+    
+    const updatedFinance = await FinanceModel.findOneAndUpdate(
+      { userId },
+      {
+        $set: {
+          debitList: finance.debitList,
+          creditList: finance.creditList,
+          totalDebit: finance.totalDebit,
+          totalCredit: finance.totalCredit,
+        },
+      },
+      { new: true, lean: true }
+    );
+    
+    if (updatedFinance) {
+      const { _id, __v, ...financeWithoutId } = updatedFinance as any;
+      return financeWithoutId as Finance;
+    }
+    return finance;
+  }
+}
+
+// Keep MemStorage for backward compatibility if needed
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private expenses: Map<string, DailyExpense>;
@@ -342,4 +686,5 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Use MongoStorage as the default storage
+export const storage = new MongoStorage();

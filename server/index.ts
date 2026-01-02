@@ -1,7 +1,10 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { connectDB } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -11,6 +14,29 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// CORS configuration - allow requests from frontend
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  : ["http://localhost:5000", "http://localhost:5173"];
+
+app.use(
+  cors({
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin) || process.env.NODE_ENV === "development") {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 app.use(
   express.json({
@@ -60,6 +86,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Connect to MongoDB
+  try {
+    await connectDB();
+  } catch (error) {
+    console.error("Failed to connect to MongoDB:", error);
+    process.exit(1);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -67,15 +101,16 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // Don't crash the process on handled errors (especially important in production).
+    // Log for observability; upstream process managers can still restart on fatal errors.
+    console.error(err);
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
+  // In production with separate frontend hosting, don't serve static files
+  // Only serve static files if FRONTEND_HOSTED_SEPARATELY is not set
+  if (process.env.NODE_ENV === "production" && !process.env.FRONTEND_HOSTED_SEPARATELY) {
     serveStatic(app);
-  } else {
+  } else if (process.env.NODE_ENV !== "production") {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
