@@ -4,6 +4,8 @@ import { readFile } from "fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
+// NOTE: jsonwebtoken and bcryptjs should NOT be bundled as they rely on Node.js built-ins
+// that need to be available at runtime (crypto module, native bindings)
 const allowlist = [
   "@google/generative-ai",
   "axios",
@@ -15,7 +17,6 @@ const allowlist = [
   "express",
   "express-rate-limit",
   "express-session",
-  "jsonwebtoken",
   "memorystore",
   "multer",
   "nanoid",
@@ -30,7 +31,6 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
-  "bcryptjs",
 ];
 
 async function buildBackend() {
