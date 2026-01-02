@@ -1,0 +1,299 @@
+You are a senior full-stack developer. Build a complete, production-ready personal finance & task management website using the following strict requirements.
+
+🚨 TECH STACK (STRICT – DO NOT CHANGE)
+Frontend
+
+React.js (Vite or CRA)
+
+Tailwind CSS
+
+Axios for API calls
+
+React Router
+
+Proper folder structure
+
+Backend
+
+Node.js
+
+Express.js
+
+MongoDB (Mongoose)
+
+Follow STRICT MVC architecture
+
+JWT Authentication
+
+Password hashing using bcrypt
+
+Environment variables using .env
+
+⚠️ DO NOT USE SUPABASE OR ANY OTHER DATABASE
+⚠️ MongoDB connection string must be read ONLY from .env
+⚠️ Assume I will add my MongoDB URL after downloading the ZIP
+
+📁 PROJECT STRUCTURE (MANDATORY)
+Backend
+backend/
+ ├── controllers/
+ ├── models/
+ ├── routes/
+ ├── middlewares/
+ ├── config/
+ ├── utils/
+ ├── app.js
+ ├── server.js
+ └── .env.example
+
+Frontend
+frontend/
+ ├── src/
+ │   ├── pages/
+ │   ├── components/
+ │   ├── services/
+ │   ├── context/
+ │   ├── hooks/
+ │   ├── routes/
+ │   └── App.jsx
+ └── tailwind.config.js
+
+🔐 AUTHENTICATION & USER RULES
+User Model
+
+Fields:
+
+name
+
+email
+
+phone (unique)
+
+password (hashed)
+
+createdAt
+
+Authentication Flow
+
+Landing page = Login / Signup
+
+Signup using name, email, phone, password
+
+Login using phone + password
+
+JWT-based authentication
+
+Protected routes
+
+User can ONLY access their own data
+
+User dashboard includes Update Profile option
+
+No user can see another user’s data
+
+📊 MODELS & FUNCTIONAL REQUIREMENTS
+1️⃣ DAILY EXPENSE TRACKER MODEL
+Fields
+
+userId (reference User)
+
+date
+
+expenses: array of objects
+Example:
+
+[
+ { purpose: "Food", amount: 120 },
+ { purpose: "Travel", amount: 80 }
+]
+
+
+total (auto calculated from expenses)
+
+grandTotal (auto calculated – total of all days)
+
+salaryCredited (fixed monthly budget)
+
+balance (salaryCredited − grandTotal)
+
+Rules
+
+total, grandTotal, and balance must be AUTO-CALCULATED
+
+No manual input for calculated fields
+
+Update automatically when expenses are added/edited/deleted
+
+Display clean UI with summary cards
+
+2️⃣ MONTHLY GOAL MODEL
+Fields
+
+userId
+
+goalName
+
+status (pending / completed)
+
+Features
+
+Add goal
+
+Toggle status
+
+Display list of goals
+
+Simple UI
+
+3️⃣ EMI MANAGEMENT MODEL
+Fields
+
+userId
+
+emiTitle
+
+startMonth
+
+emiAmountPerMonth
+
+emiDuration (months)
+
+emiSchedule (auto-generated)
+
+remainingAmount (auto-calculated)
+
+Behavior
+
+When EMI is created:
+
+Automatically generate a monthly table
+
+One row per month until duration ends
+
+Each month has:
+
+month
+
+amount
+
+status (paid / unpaid)
+
+Remaining amount must auto update
+
+Allow marking EMI as settled month-wise
+
+4️⃣ PLAN MODEL
+Fields
+
+userId
+
+planDescription
+
+status (worked / not worked)
+
+Purpose
+
+Plan events, dates, or ideas
+
+Simple CRUD
+
+Status toggle
+
+5️⃣ FINANCE MANAGEMENT MODEL (DEBIT & CREDIT)
+Fields
+
+userId
+
+debitList: array
+Example:
+
+[{ person: "John", amount: 500 }]
+
+
+creditList: array
+Example:
+
+[{ person: "Alex", amount: 1000 }]
+
+
+totalDebit (auto-calculated)
+
+totalCredit (auto-calculated)
+
+Rules
+
+Multiple entries allowed
+
+Totals auto-calculated
+
+Clean UI with totals display
+
+🔒 SECURITY & VALIDATION
+
+Protect all routes with JWT middleware
+
+Validate all inputs
+
+Handle errors properly
+
+No hardcoded secrets
+
+.env.example must be provided
+
+🎨 FRONTEND REQUIREMENTS
+
+Responsive design
+
+Clean dashboard UI
+
+Sidebar navigation
+
+Separate pages for:
+
+Dashboard
+
+Daily Expense
+
+EMI
+
+Goals
+
+Plans
+
+Finance Management
+
+Profile
+
+Use Tailwind utility classes
+
+Show loading & error states
+
+🔁 API RULES
+
+RESTful APIs
+
+Separate routes per model
+
+Controllers should not contain business logic unrelated to the model
+
+Use middleware for auth & error handling
+
+📦 FINAL OUTPUT REQUIREMENTS
+
+Fully working frontend + backend
+
+No placeholder logic
+
+No Supabase
+
+MongoDB only
+
+Ready to run after adding .env
+
+Provide clear run instructions
+
+Provide sample .env.example
+
+🎯 GOAL
+
+This should be a real-world personal finance & task manager, production-quality, clean code, scalable, and secure.
