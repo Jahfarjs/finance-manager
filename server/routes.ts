@@ -1,16 +1,444 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import { storage } from "./storage";
+import {
+  insertUserSchema,
+  loginSchema,
+  insertDailyExpenseSchema,
+  insertGoalSchema,
+  insertEmiSchema,
+  insertPlanSchema,
+  insertFinanceEntrySchema,
+  updateUserSchema,
+} from "@shared/schema";
+
+const JWT_SECRET = process.env.SESSION_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("SESSION_SECRET environment variable is required for JWT authentication");
+}
+
+interface AuthRequest extends Request {
+  userId?: string;
+}
+
+// Auth middleware
+function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    req.userId = decoded.userId;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Auth routes
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const result = insertUserSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+      const existingUser = await storage.getUserByPhone(result.data.phone);
+      if (existingUser) {
+        return res.status(400).json({ message: "Phone number already registered" });
+      }
+
+      const user = await storage.createUser(result.data);
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json({ token, user: userWithoutPassword });
+    } catch (error) {
+      console.error("Signup error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const result = loginSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const user = await storage.getUserByPhone(result.data.phone);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid phone or password" });
+      }
+
+      const isValidPassword = await bcrypt.compare(result.data.password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid phone or password" });
+      }
+
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json({ token, user: userWithoutPassword });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // User routes
+  app.put("/api/user/profile", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = updateUserSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const user = await storage.updateUser(req.userId!, result.data);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    } catch (error) {
+      console.error("Update profile error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Dashboard stats
+  app.get("/api/dashboard/stats", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.userId!;
+      
+      const expenses = await storage.getExpenses(userId);
+      const goals = await storage.getGoals(userId);
+      const emis = await storage.getEmis(userId);
+      const finance = await storage.getFinance(userId);
+
+      const totalExpenses = expenses.reduce((sum, exp) => sum + exp.total, 0);
+      const salaryCredited = expenses.reduce((sum, exp) => sum + (exp.salaryCredited || 0), 0);
+      const balance = salaryCredited - totalExpenses;
+      const pendingGoals = goals.filter((g) => g.status === "pending").length;
+      const activeEmis = emis.filter((e) => e.remainingAmount > 0).length;
+
+      res.json({
+        totalExpenses,
+        balance,
+        totalCredit: finance.totalCredit,
+        totalDebit: finance.totalDebit,
+        pendingGoals,
+        activeEmis,
+        salaryCredited,
+      });
+    } catch (error) {
+      console.error("Dashboard stats error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Expense routes
+  app.get("/api/expenses", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const expenses = await storage.getExpenses(req.userId!);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      res.json(limit ? expenses.slice(0, limit) : expenses);
+    } catch (error) {
+      console.error("Get expenses error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/expenses", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertDailyExpenseSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const expense = await storage.createExpense(req.userId!, result.data);
+      res.json(expense);
+    } catch (error) {
+      console.error("Create expense error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/expenses/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertDailyExpenseSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const expense = await storage.getExpense(req.params.id);
+      if (!expense || expense.userId !== req.userId) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      const updated = await storage.updateExpense(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update expense error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/expenses/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const expense = await storage.getExpense(req.params.id);
+      if (!expense || expense.userId !== req.userId) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      await storage.deleteExpense(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete expense error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Goal routes
+  app.get("/api/goals", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const goals = await storage.getGoals(req.userId!);
+      res.json(goals);
+    } catch (error) {
+      console.error("Get goals error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/goals", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertGoalSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const goal = await storage.createGoal(req.userId!, result.data);
+      res.json(goal);
+    } catch (error) {
+      console.error("Create goal error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/goals/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const goal = await storage.getGoal(req.params.id);
+      if (!goal || goal.userId !== req.userId) {
+        return res.status(404).json({ message: "Goal not found" });
+      }
+
+      const updated = await storage.updateGoal(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update goal error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/goals/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const goal = await storage.getGoal(req.params.id);
+      if (!goal || goal.userId !== req.userId) {
+        return res.status(404).json({ message: "Goal not found" });
+      }
+
+      await storage.deleteGoal(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete goal error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // EMI routes
+  app.get("/api/emis", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const emis = await storage.getEmis(req.userId!);
+      res.json(emis);
+    } catch (error) {
+      console.error("Get emis error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/emis", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertEmiSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const emi = await storage.createEmi(req.userId!, result.data);
+      res.json(emi);
+    } catch (error) {
+      console.error("Create emi error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/emis/:id/schedule/:monthIndex", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const emi = await storage.getEmi(req.params.id);
+      if (!emi || emi.userId !== req.userId) {
+        return res.status(404).json({ message: "EMI not found" });
+      }
+
+      const monthIndex = parseInt(req.params.monthIndex);
+      const status = req.body.status as "paid" | "unpaid";
+      
+      const updated = await storage.updateEmiSchedule(req.params.id, monthIndex, status);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update emi schedule error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/emis/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const emi = await storage.getEmi(req.params.id);
+      if (!emi || emi.userId !== req.userId) {
+        return res.status(404).json({ message: "EMI not found" });
+      }
+
+      await storage.deleteEmi(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete emi error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Plan routes
+  app.get("/api/plans", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const plans = await storage.getPlans(req.userId!);
+      res.json(plans);
+    } catch (error) {
+      console.error("Get plans error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/plans", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertPlanSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const plan = await storage.createPlan(req.userId!, result.data);
+      res.json(plan);
+    } catch (error) {
+      console.error("Create plan error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/plans/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const plan = await storage.getPlan(req.params.id);
+      if (!plan || plan.userId !== req.userId) {
+        return res.status(404).json({ message: "Plan not found" });
+      }
+
+      const updated = await storage.updatePlan(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update plan error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/plans/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const plan = await storage.getPlan(req.params.id);
+      if (!plan || plan.userId !== req.userId) {
+        return res.status(404).json({ message: "Plan not found" });
+      }
+
+      const updated = await storage.updatePlan(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update plan error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/plans/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const plan = await storage.getPlan(req.params.id);
+      if (!plan || plan.userId !== req.userId) {
+        return res.status(404).json({ message: "Plan not found" });
+      }
+
+      await storage.deletePlan(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete plan error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Finance routes
+  app.get("/api/finance", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const finance = await storage.getFinance(req.userId!);
+      res.json(finance);
+    } catch (error) {
+      console.error("Get finance error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/finance/entry", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertFinanceEntrySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const { type, person, amount } = result.data;
+      const finance = await storage.addFinanceEntry(req.userId!, type, { person, amount });
+      res.json(finance);
+    } catch (error) {
+      console.error("Add finance entry error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/finance/entry/:type/:index", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const type = req.params.type as "debit" | "credit";
+      const index = parseInt(req.params.index);
+      
+      if (type !== "debit" && type !== "credit") {
+        return res.status(400).json({ message: "Invalid type" });
+      }
+
+      const finance = await storage.removeFinanceEntry(req.userId!, type, index);
+      res.json(finance);
+    } catch (error) {
+      console.error("Remove finance entry error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
 
   return httpServer;
 }
