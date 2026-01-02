@@ -6,6 +6,19 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { connectDB } from "./db";
 
+// CRITICAL: Validate JWT_SECRET at startup before any modules use it
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+
+if (!JWT_SECRET || typeof JWT_SECRET !== "string" || JWT_SECRET.trim().length === 0) {
+  console.error("❌ FATAL: JWT_SECRET environment variable is missing or invalid");
+  console.error("   JWT_SECRET must be a non-empty string");
+  console.error("   Please set JWT_SECRET in your Railway environment variables");
+  process.exit(1);
+}
+
+// Export validated secret for use in routes
+export const validatedJWTSecret = JWT_SECRET;
+
 const app = express();
 const httpServer = createServer(app);
 

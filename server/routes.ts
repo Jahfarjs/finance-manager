@@ -14,10 +14,13 @@ import {
   updateUserSchema,
 } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error("SESSION_SECRET environment variable is required for JWT authentication");
+// Get JWT_SECRET from environment - validated at startup in index.ts
+function getJWTSecret(): string {
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+  if (!secret || typeof secret !== "string" || secret.trim().length === 0) {
+    throw new Error("JWT_SECRET is missing or invalid - this should have been caught at startup");
+  }
+  return secret;
 }
 
 interface AuthRequest extends Request {
@@ -33,7 +36,8 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 
   const token = authHeader.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const secret = getJWTSecret();
+    const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as { userId: string };
     req.userId = decoded.userId;
     next();
   } catch (error) {
@@ -59,7 +63,11 @@ export async function registerRoutes(
       }
 
       const user = await storage.createUser(result.data);
-      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      const secret = getJWTSecret();
+      const token = jwt.sign({ userId: user.id }, secret, { 
+        expiresIn: "7d",
+        algorithm: "HS256"
+      });
       
       const { password, ...userWithoutPassword } = user;
       res.json({ token, user: userWithoutPassword });
@@ -86,7 +94,11 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid phone or password" });
       }
 
-      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      const secret = getJWTSecret();
+      const token = jwt.sign({ userId: user.id }, secret, { 
+        expiresIn: "7d",
+        algorithm: "HS256"
+      });
       
       const { password, ...userWithoutPassword } = user;
       res.json({ token, user: userWithoutPassword });
