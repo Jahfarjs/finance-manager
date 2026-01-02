@@ -14,11 +14,11 @@ import {
   updateUserSchema,
 } from "@shared/schema";
 
-// Get JWT_SECRET from environment - validated at startup in index.ts
-function getJWTSecret(): string {
-  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
-  if (!secret || typeof secret !== "string" || secret.trim().length === 0) {
-    throw new Error("JWT_SECRET is missing or invalid - this should have been caught at startup");
+// Utility function to get JWT secret - only called at runtime inside route handlers
+export function getJWTSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || typeof secret !== "string") {
+    throw new Error("JWT_SECRET is missing or invalid");
   }
   return secret;
 }
