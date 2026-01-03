@@ -8,6 +8,8 @@ import {
   ArrowLeftRight,
   User,
   LogOut,
+  BookOpen,
+  Heart,
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,6 +33,8 @@ const navigationItems = [
   { title: "EMI Management", url: "/emi", icon: CreditCard },
   { title: "Goals", url: "/goals", icon: Target },
   { title: "Plans", url: "/plans", icon: Calendar },
+  { title: "Memories", url: "/memories", icon: BookOpen },
+  { title: "Wishlist", url: "/wishlist", icon: Heart },
   { title: "Finance", url: "/finance", icon: ArrowLeftRight },
   { title: "Profile", url: "/profile", icon: User },
 ];

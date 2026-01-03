@@ -18,6 +18,12 @@ import type {
   FinanceEntry,
   EMIScheduleItem,
   ExpenseItem,
+  PersonalMemory,
+  InsertPersonalMemory,
+  UpdatePersonalMemory,
+  Wishlist,
+  InsertWishlist,
+  UpdateWishlist,
 } from "@shared/schema";
 import { addMonths, format, parse } from "date-fns";
 import { UserModel } from "./models/User";
@@ -26,6 +32,8 @@ import { GoalModel } from "./models/Goal";
 import { EMIModel } from "./models/EMI";
 import { PlanModel } from "./models/Plan";
 import { FinanceModel } from "./models/Finance";
+import { PersonalMemoryModel } from "./models/PersonalMemory";
+import { WishlistModel } from "./models/Wishlist";
 
 export interface IStorage {
   // User methods
@@ -39,6 +47,7 @@ export interface IStorage {
   getAllExpenseMonths(userId: string): Promise<DailyExpense[]>;
   createExpenseMonth(userId: string, data: InsertDailyExpense): Promise<DailyExpense>;
   updateExpenseMonthSalary(userId: string, month: string, salaryCredited: number): Promise<DailyExpense | undefined>;
+  updateExpenseMonthBalanceDistribution(userId: string, month: string, balanceSBI: number, balanceKGB: number, balanceCash: number): Promise<DailyExpense | undefined>;
   addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined>;
   updateExpenseDay(userId: string, month: string, data: UpdateExpenseDay): Promise<DailyExpense | undefined>;
   deleteExpenseDay(userId: string, month: string, date: string): Promise<DailyExpense | undefined>;
@@ -69,6 +78,21 @@ export interface IStorage {
   getFinance(userId: string): Promise<Finance>;
   addFinanceEntry(userId: string, type: "debit" | "credit", entry: FinanceEntry): Promise<Finance>;
   removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance>;
+
+  // Personal Memory methods
+  getMemories(userId: string): Promise<PersonalMemory[]>;
+  getMemoriesByDate(userId: string, date: string): Promise<PersonalMemory[]>;
+  getMemory(id: string): Promise<PersonalMemory | undefined>;
+  createMemory(userId: string, data: InsertPersonalMemory): Promise<PersonalMemory>;
+  updateMemory(id: string, data: UpdatePersonalMemory): Promise<PersonalMemory | undefined>;
+  deleteMemory(id: string): Promise<boolean>;
+
+  // Wishlist methods
+  getWishlist(userId: string): Promise<Wishlist[]>;
+  getWishlistItem(id: string): Promise<Wishlist | undefined>;
+  createWishlistItem(userId: string, data: InsertWishlist): Promise<Wishlist>;
+  updateWishlistItem(id: string, data: UpdateWishlist): Promise<Wishlist | undefined>;
+  deleteWishlistItem(id: string): Promise<boolean>;
 }
 
 export class MongoStorage implements IStorage {
@@ -177,6 +201,9 @@ export class MongoStorage implements IStorage {
       days: [],
       monthlyTotal: 0,
       balance: data.salaryCredited || 0,
+      balanceSBI: 0,
+      balanceKGB: 0,
+      balanceCash: 0,
     };
     
     const created = await DailyExpenseModel.create(expense);
@@ -199,6 +226,27 @@ export class MongoStorage implements IStorage {
 
     // Recalculate balance
     return await this.recalculateMonthTotals(updated);
+  }
+
+  async updateExpenseMonthBalanceDistribution(userId: string, month: string, balanceSBI: number, balanceKGB: number, balanceCash: number): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) return undefined;
+
+    // Validate that the sum equals the balance
+    const total = balanceSBI + balanceKGB + balanceCash;
+    if (Math.abs(total - monthDoc.balance) > 0.01) {
+      throw new Error(`Balance distribution sum (${total}) must equal the current balance (${monthDoc.balance})`);
+    }
+
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      {
+        $set: { balanceSBI, balanceKGB, balanceCash },
+      },
+      { new: true, lean: true }
+    );
+
+    return updated || undefined;
   }
 
   async addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined> {
@@ -452,6 +500,7 @@ export class MongoStorage implements IStorage {
       id,
       userId,
       planDescription: data.planDescription,
+      date: data.date,
       status: "not_worked",
     };
     await PlanModel.create(plan);
@@ -556,6 +605,95 @@ export class MongoStorage implements IStorage {
     }
     return finance;
   }
+
+  // Personal Memory methods
+  async getMemories(userId: string): Promise<PersonalMemory[]> {
+    const memories = await PersonalMemoryModel.find({ userId })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+    return memories;
+  }
+
+  async getMemoriesByDate(userId: string, date: string): Promise<PersonalMemory[]> {
+    const memories = await PersonalMemoryModel.find({ userId, date })
+      .sort({ createdAt: -1 })
+      .lean();
+    return memories;
+  }
+
+  async getMemory(id: string): Promise<PersonalMemory | undefined> {
+    const memory = await PersonalMemoryModel.findOne({ id }).lean();
+    return memory || undefined;
+  }
+
+  async createMemory(userId: string, data: InsertPersonalMemory): Promise<PersonalMemory> {
+    const id = randomUUID();
+    const memory: PersonalMemory = {
+      id,
+      userId,
+      date: data.date,
+      title: data.title,
+      description: data.description,
+      createdAt: new Date().toISOString(),
+    };
+    await PersonalMemoryModel.create(memory);
+    return memory;
+  }
+
+  async updateMemory(id: string, data: UpdatePersonalMemory): Promise<PersonalMemory | undefined> {
+    const memory = await PersonalMemoryModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return memory || undefined;
+  }
+
+  async deleteMemory(id: string): Promise<boolean> {
+    const result = await PersonalMemoryModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // Wishlist methods
+  async getWishlist(userId: string): Promise<Wishlist[]> {
+    const wishlist = await WishlistModel.find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return wishlist;
+  }
+
+  async getWishlistItem(id: string): Promise<Wishlist | undefined> {
+    const item = await WishlistModel.findOne({ id }).lean();
+    return item || undefined;
+  }
+
+  async createWishlistItem(userId: string, data: InsertWishlist): Promise<Wishlist> {
+    const id = randomUUID();
+    const wishlist: Wishlist = {
+      id,
+      userId,
+      wish: data.wish,
+      category: data.category,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    await WishlistModel.create(wishlist);
+    return wishlist;
+  }
+
+  async updateWishlistItem(id: string, data: UpdateWishlist): Promise<Wishlist | undefined> {
+    const item = await WishlistModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return item || undefined;
+  }
+
+  async deleteWishlistItem(id: string): Promise<boolean> {
+    const result = await WishlistModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
 }
 
 // Keep MemStorage for backward compatibility if needed
@@ -620,51 +758,7 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
 
-  // Daily Expense methods
-  async getExpenses(userId: string): Promise<DailyExpense[]> {
-    return Array.from(this.expenses.values())
-      .filter((exp) => exp.userId === userId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }
-
-  async getExpense(id: string): Promise<DailyExpense | undefined> {
-    return this.expenses.get(id);
-  }
-
-  async createExpense(userId: string, data: InsertDailyExpense): Promise<DailyExpense> {
-    const id = randomUUID();
-    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const expense: DailyExpense = {
-      id,
-      userId,
-      date: data.date,
-      expenses: data.expenses,
-      total,
-      salaryCredited: data.salaryCredited || 0,
-    };
-    this.expenses.set(id, expense);
-    return expense;
-  }
-
-  async updateExpense(id: string, data: InsertDailyExpense): Promise<DailyExpense | undefined> {
-    const expense = this.expenses.get(id);
-    if (!expense) return undefined;
-    
-    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const updatedExpense: DailyExpense = {
-      ...expense,
-      date: data.date,
-      expenses: data.expenses,
-      total,
-      salaryCredited: data.salaryCredited || expense.salaryCredited,
-    };
-    this.expenses.set(id, updatedExpense);
-    return updatedExpense;
-  }
-
-  async deleteExpense(id: string): Promise<boolean> {
-    return this.expenses.delete(id);
-  }
+  // Daily Expense methods (month-based) - stub implementations already added above
 
   // Goal methods
   async getGoals(userId: string): Promise<Goal[]> {
@@ -775,6 +869,7 @@ export class MemStorage implements IStorage {
       id,
       userId,
       planDescription: data.planDescription,
+      date: data.date,
       status: "not_worked",
     };
     this.plans.set(id, plan);
@@ -839,6 +934,89 @@ export class MemStorage implements IStorage {
     
     this.finances.set(userId, finance);
     return finance;
+  }
+
+  // Daily Expense methods (month-based) - stub implementations
+  async getExpenseByMonth(userId: string, month: string): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async getAllExpenseMonths(userId: string): Promise<DailyExpense[]> {
+    return [];
+  }
+
+  async createExpenseMonth(userId: string, data: InsertDailyExpense): Promise<DailyExpense> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  async updateExpenseMonthSalary(userId: string, month: string, salaryCredited: number): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async updateExpenseMonthBalanceDistribution(userId: string, month: string, balanceSBI: number, balanceKGB: number, balanceCash: number): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async updateExpenseDay(userId: string, month: string, data: UpdateExpenseDay): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async deleteExpenseDay(userId: string, month: string, date: string): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  async deleteExpenseDayItem(userId: string, month: string, date: string, itemId: string): Promise<DailyExpense | undefined> {
+    return undefined;
+  }
+
+  // Personal Memory methods - stub implementations
+  async getMemories(userId: string): Promise<PersonalMemory[]> {
+    return [];
+  }
+
+  async getMemoriesByDate(userId: string, date: string): Promise<PersonalMemory[]> {
+    return [];
+  }
+
+  async getMemory(id: string): Promise<PersonalMemory | undefined> {
+    return undefined;
+  }
+
+  async createMemory(userId: string, data: InsertPersonalMemory): Promise<PersonalMemory> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  async updateMemory(id: string, data: UpdatePersonalMemory): Promise<PersonalMemory | undefined> {
+    return undefined;
+  }
+
+  async deleteMemory(id: string): Promise<boolean> {
+    return false;
+  }
+
+  // Wishlist methods - stub implementations
+  async getWishlist(userId: string): Promise<Wishlist[]> {
+    return [];
+  }
+
+  async getWishlistItem(id: string): Promise<Wishlist | undefined> {
+    return undefined;
+  }
+
+  async createWishlistItem(userId: string, data: InsertWishlist): Promise<Wishlist> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  async updateWishlistItem(id: string, data: UpdateWishlist): Promise<Wishlist | undefined> {
+    return undefined;
+  }
+
+  async deleteWishlistItem(id: string): Promise<boolean> {
+    return false;
   }
 }
 

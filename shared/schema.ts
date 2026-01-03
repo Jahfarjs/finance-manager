@@ -46,6 +46,9 @@ export const dailyExpenseSchema = z.object({
   days: z.array(expenseDaySchema),
   monthlyTotal: z.number(), // auto-calculated
   balance: z.number(), // auto-calculated (salaryCredited - monthlyTotal)
+  balanceSBI: z.number().default(0), // Balance in SBI
+  balanceKGB: z.number().default(0), // Balance in KGB
+  balanceCash: z.number().default(0), // Balance in Cash
 });
 
 // Schema for creating/updating a month
@@ -71,6 +74,18 @@ export const updateSalarySchema = z.object({
   salaryCredited: z.number().min(0),
 });
 
+// Schema for updating balance distribution
+export const updateBalanceDistributionSchema = z.object({
+  balanceSBI: z.number().min(0),
+  balanceKGB: z.number().min(0),
+  balanceCash: z.number().min(0),
+}).refine((data) => {
+  // The sum should equal the balance, but we'll validate this on the server
+  return data.balanceSBI + data.balanceKGB + data.balanceCash >= 0;
+}, {
+  message: "All balance amounts must be non-negative",
+});
+
 export type DailyExpense = z.infer<typeof dailyExpenseSchema>;
 export type InsertDailyExpense = z.infer<typeof insertDailyExpenseSchema>;
 export type ExpenseItem = z.infer<typeof expenseItemSchema>;
@@ -78,6 +93,7 @@ export type ExpenseDay = z.infer<typeof expenseDaySchema>;
 export type InsertExpenseDay = z.infer<typeof insertExpenseDaySchema>;
 export type UpdateExpenseDay = z.infer<typeof updateExpenseDaySchema>;
 export type UpdateSalary = z.infer<typeof updateSalarySchema>;
+export type UpdateBalanceDistribution = z.infer<typeof updateBalanceDistributionSchema>;
 
 // Monthly Goal Schema
 export const goalSchema = z.object({
@@ -130,11 +146,13 @@ export const planSchema = z.object({
   id: z.string(),
   userId: z.string(),
   planDescription: z.string().min(1, "Description is required"),
+  date: z.string().optional(), // Optional reminder date (YYYY-MM-DD format)
   status: z.enum(["worked", "not_worked"]),
 });
 
 export const insertPlanSchema = z.object({
   planDescription: z.string().min(1, "Description is required"),
+  date: z.string().optional(), // Optional reminder date (YYYY-MM-DD format)
 });
 
 export type Plan = z.infer<typeof planSchema>;
@@ -165,6 +183,57 @@ export const insertFinanceEntrySchema = z.object({
 export type Finance = z.infer<typeof financeSchema>;
 export type FinanceEntry = z.infer<typeof financeEntrySchema>;
 export type InsertFinanceEntry = z.infer<typeof insertFinanceEntrySchema>;
+
+// Personal Memory Schema
+export const personalMemorySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  title: z.string().optional(),
+  description: z.string().min(1, "Description is required"),
+  createdAt: z.string(),
+});
+
+export const insertPersonalMemorySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  title: z.string().optional(),
+  description: z.string().min(1, "Description is required"),
+});
+
+export const updatePersonalMemorySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
+  title: z.string().optional(),
+  description: z.string().min(1, "Description is required").optional(),
+});
+
+export type PersonalMemory = z.infer<typeof personalMemorySchema>;
+export type InsertPersonalMemory = z.infer<typeof insertPersonalMemorySchema>;
+export type UpdatePersonalMemory = z.infer<typeof updatePersonalMemorySchema>;
+
+// Wishlist Schema
+export const wishlistSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  wish: z.string().min(1, "Wish is required"),
+  category: z.enum(["Food", "Travel", "Entertainment", "Other"]),
+  status: z.enum(["pending", "completed"]),
+  createdAt: z.string(),
+});
+
+export const insertWishlistSchema = z.object({
+  wish: z.string().min(1, "Wish is required"),
+  category: z.enum(["Food", "Travel", "Entertainment", "Other"]),
+});
+
+export const updateWishlistSchema = z.object({
+  wish: z.string().min(1, "Wish is required").optional(),
+  category: z.enum(["Food", "Travel", "Entertainment", "Other"]).optional(),
+  status: z.enum(["pending", "completed"]).optional(),
+});
+
+export type Wishlist = z.infer<typeof wishlistSchema>;
+export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
+export type UpdateWishlist = z.infer<typeof updateWishlistSchema>;
 
 // API Response Types
 export interface AuthResponse {

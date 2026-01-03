@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Calendar, Trash2, CheckCircle, XCircle, Edit2 } from "lucide-react";
+import { Plus, Calendar, Trash2, CheckCircle, XCircle, Edit2, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -18,6 +19,7 @@ import type { Plan } from "@shared/schema";
 
 const planFormSchema = z.object({
   planDescription: z.string().min(1, "Description is required"),
+  date: z.string().optional(),
 });
 
 type PlanFormData = z.infer<typeof planFormSchema>;
@@ -35,7 +37,7 @@ export default function PlansPage() {
 
   const form = useForm<PlanFormData>({
     resolver: zodResolver(planFormSchema),
-    defaultValues: { planDescription: "" },
+    defaultValues: { planDescription: "", date: "" },
   });
 
   const createMutation = useMutation({
@@ -104,12 +106,12 @@ export default function PlansPage() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setSelectedPlan(null);
-    form.reset();
+    form.reset({ planDescription: "", date: "" });
   };
 
   const handleEdit = (plan: Plan) => {
     setSelectedPlan(plan);
-    form.reset({ planDescription: plan.planDescription });
+    form.reset({ planDescription: plan.planDescription, date: plan.date || "" });
     setIsDialogOpen(true);
   };
 
@@ -164,6 +166,20 @@ export default function PlansPage() {
                 {form.formState.errors.planDescription && (
                   <p className="text-sm text-destructive">
                     {form.formState.errors.planDescription.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="date">Reminder Date (Optional)</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  {...form.register("date")}
+                  data-testid="input-plan-date"
+                />
+                {form.formState.errors.date && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.date.message}
                   </p>
                 )}
               </div>
@@ -231,6 +247,12 @@ export default function PlansPage() {
               </CardHeader>
               <CardContent className="flex-1 flex flex-col">
                 <p className="text-sm flex-1 whitespace-pre-wrap">{plan.planDescription}</p>
+                {plan.date && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <CalendarDays className="h-3 w-3" />
+                    <span>{new Date(plan.date).toLocaleDateString()}</span>
+                  </div>
+                )}
                 <div className="mt-4 pt-4 border-t flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Toggle status</span>
                   <Button

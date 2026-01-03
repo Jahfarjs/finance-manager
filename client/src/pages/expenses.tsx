@@ -37,6 +37,7 @@ export default function ExpensesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), "yyyy-MM"));
   const [isDayDialogOpen, setIsDayDialogOpen] = useState(false);
   const [isSalaryDialogOpen, setIsSalaryDialogOpen] = useState(false);
+  const [isBalanceDistributionDialogOpen, setIsBalanceDistributionDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -94,6 +95,24 @@ export default function ExpensesPage() {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to update salary",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update balance distribution
+  const updateBalanceDistributionMutation = useMutation({
+    mutationFn: ({ month, balanceSBI, balanceKGB, balanceCash }: { month: string; balanceSBI: number; balanceKGB: number; balanceCash: number }) =>
+      api.put<DailyExpense>(`/expenses/month/${month}/balance-distribution`, { balanceSBI, balanceKGB, balanceCash }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/month", selectedMonth] });
+      toast({ title: "Balance distribution updated", description: "Balance has been distributed across sources." });
+      setIsBalanceDistributionDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update balance distribution",
         variant: "destructive",
       });
     },
@@ -253,11 +272,9 @@ export default function ExpensesPage() {
   const monthlyTotal = currentMonthExpense?.monthlyTotal || 0;
   const salaryCredited = currentMonthExpense?.salaryCredited || 0;
   const balance = currentMonthExpense?.balance || 0;
-
-  // Calculate overall stats from all months
-  const overallTotal = allMonths?.reduce((sum, month) => sum + month.monthlyTotal, 0) || 0;
-  const overallSalary = allMonths?.reduce((sum, month) => sum + month.salaryCredited, 0) || 0;
-  const overallBalance = overallSalary - overallTotal;
+  const balanceSBI = currentMonthExpense?.balanceSBI || 0;
+  const balanceKGB = currentMonthExpense?.balanceKGB || 0;
+  const balanceCash = currentMonthExpense?.balanceCash || 0;
 
   if (isLoading) {
     return <PageLoader />;
@@ -498,27 +515,148 @@ export default function ExpensesPage() {
         </CardContent>
       </Card>
 
-      {/* Overall Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard
-          title="Overall Total"
-          value={formatCurrency(overallTotal)}
-          icon={Wallet}
-          description="All expenses across months"
-        />
-        <StatCard
-          title="Overall Salary"
-          value={formatCurrency(overallSalary)}
-          icon={DollarSign}
-          description="Total income credited"
-        />
-        <StatCard
-          title="Overall Balance"
-          value={formatCurrency(overallBalance)}
-          icon={Calendar}
-          description="Total salary minus expenses"
-        />
-      </div>
+      {/* Balance Distribution */}
+      {currentMonthExpense && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Balance Distribution</CardTitle>
+                <CardDescription>
+                  Total Balance: {formatCurrency(balance)}
+                </CardDescription>
+              </div>
+              <Dialog open={isBalanceDistributionDialogOpen} onOpenChange={setIsBalanceDistributionDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Distribute Balance
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Distribute Balance</DialogTitle>
+                    <DialogDescription>
+                      Divide the balance ({formatCurrency(balance)}) across SBI, KGB, and Cash. The sum must equal the total balance.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const sbi = parseFloat(formData.get("sbi") as string) || 0;
+                      const kgb = parseFloat(formData.get("kgb") as string) || 0;
+                      const cash = parseFloat(formData.get("cash") as string) || 0;
+                      const total = sbi + kgb + cash;
+                      
+                      if (Math.abs(total - balance) > 0.01) {
+                        toast({
+                          title: "Invalid distribution",
+                          description: `Sum (${formatCurrency(total)}) must equal balance (${formatCurrency(balance)})`,
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
+                      updateBalanceDistributionMutation.mutate({
+                        month: selectedMonth,
+                        balanceSBI: sbi,
+                        balanceKGB: kgb,
+                        balanceCash: cash,
+                      });
+                    }}
+                    className="space-y-4"
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor="sbi">SBI Amount</Label>
+                      <Input
+                        id="sbi"
+                        name="sbi"
+                        type="number"
+                        placeholder="Enter SBI amount"
+                        defaultValue={balanceSBI}
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="kgb">KGB Amount</Label>
+                      <Input
+                        id="kgb"
+                        name="kgb"
+                        type="number"
+                        placeholder="Enter KGB amount"
+                        defaultValue={balanceKGB}
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cash">Cash Amount</Label>
+                      <Input
+                        id="cash"
+                        name="cash"
+                        type="number"
+                        placeholder="Enter Cash amount"
+                        defaultValue={balanceCash}
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsBalanceDistributionDialogOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={updateBalanceDistributionMutation.isPending}
+                      >
+                        {updateBalanceDistributionMutation.isPending ? (
+                          <LoadingSpinner size="sm" />
+                        ) : (
+                          "Update Distribution"
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="p-4 rounded-lg border bg-card">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">SBI</p>
+                    <p className="text-2xl font-bold">{formatCurrency(balanceSBI)}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 rounded-lg border bg-card">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">KGB</p>
+                    <p className="text-2xl font-bold">{formatCurrency(balanceKGB)}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 rounded-lg border bg-card">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Cash</p>
+                    <p className="text-2xl font-bold">{formatCurrency(balanceCash)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current Month Expenses */}
       {monthNotFound || !currentMonthExpense || sortedDays.length === 0 ? (

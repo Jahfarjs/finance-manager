@@ -16,6 +16,8 @@ import ExpensesPage from "@/pages/expenses";
 import EMIPage from "@/pages/emi";
 import GoalsPage from "@/pages/goals";
 import PlansPage from "@/pages/plans";
+import MemoriesPage from "@/pages/memories";
+import WishlistPage from "@/pages/wishlist";
 import FinancePage from "@/pages/finance";
 import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
@@ -102,6 +104,12 @@ function Router() {
       </Route>
       <Route path="/plans">
         <ProtectedLayout component={PlansPage} />
+      </Route>
+      <Route path="/memories">
+        <ProtectedLayout component={MemoriesPage} />
+      </Route>
+      <Route path="/wishlist">
+        <ProtectedLayout component={WishlistPage} />
       </Route>
       <Route path="/finance">
         <ProtectedLayout component={FinancePage} />

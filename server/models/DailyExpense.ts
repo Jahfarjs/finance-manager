@@ -27,6 +27,9 @@ const dailyExpenseSchema = new Schema<DailyExpense>(
     days: { type: [expenseDaySchema], required: true, default: [] },
     monthlyTotal: { type: Number, required: true, default: 0 },
     balance: { type: Number, required: true, default: 0 },
+    balanceSBI: { type: Number, default: 0 },
+    balanceKGB: { type: Number, default: 0 },
+    balanceCash: { type: Number, default: 0 },
   },
   { versionKey: false }
 );

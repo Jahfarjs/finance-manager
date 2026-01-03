@@ -10,11 +10,16 @@ import {
   insertExpenseDaySchema,
   updateExpenseDaySchema,
   updateSalarySchema,
+  updateBalanceDistributionSchema,
   insertGoalSchema,
   insertEmiSchema,
   insertPlanSchema,
   insertFinanceEntrySchema,
   updateUserSchema,
+  insertPersonalMemorySchema,
+  updatePersonalMemorySchema,
+  insertWishlistSchema,
+  updateWishlistSchema,
 } from "@shared/schema";
 
 // Utility function to get JWT secret - only called at runtime inside route handlers
@@ -247,6 +252,41 @@ export async function registerRoutes(
       res.json(expense);
     } catch (error) {
       console.error("Update salary error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Update balance distribution for a month
+  app.put("/api/expenses/month/:month/balance-distribution", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const month = req.params.month;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
+      }
+
+      const result = updateBalanceDistributionSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateExpenseMonthBalanceDistribution(
+        req.userId!,
+        month,
+        result.data.balanceSBI,
+        result.data.balanceKGB,
+        result.data.balanceCash
+      );
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Month not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update balance distribution error:", error);
+      if (error instanceof Error && error.message.includes("must equal")) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -597,6 +637,143 @@ export async function registerRoutes(
       res.json(finance);
     } catch (error) {
       console.error("Remove finance entry error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Personal Memory routes
+  app.get("/api/memories", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const memories = await storage.getMemories(req.userId!);
+      res.json(memories);
+    } catch (error) {
+      console.error("Get memories error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/memories/:date", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const date = req.params.date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      const memories = await storage.getMemoriesByDate(req.userId!, date);
+      res.json(memories);
+    } catch (error) {
+      console.error("Get memories by date error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/memories", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertPersonalMemorySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const memory = await storage.createMemory(req.userId!, result.data);
+      res.json(memory);
+    } catch (error) {
+      console.error("Create memory error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/memories/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const memory = await storage.getMemory(req.params.id);
+      if (!memory || memory.userId !== req.userId) {
+        return res.status(404).json({ message: "Memory not found" });
+      }
+
+      const result = updatePersonalMemorySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateMemory(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update memory error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/memories/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const memory = await storage.getMemory(req.params.id);
+      if (!memory || memory.userId !== req.userId) {
+        return res.status(404).json({ message: "Memory not found" });
+      }
+
+      await storage.deleteMemory(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete memory error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Wishlist routes
+  app.get("/api/wishlist", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const wishlist = await storage.getWishlist(req.userId!);
+      res.json(wishlist);
+    } catch (error) {
+      console.error("Get wishlist error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/wishlist", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertWishlistSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const item = await storage.createWishlistItem(req.userId!, result.data);
+      res.json(item);
+    } catch (error) {
+      console.error("Create wishlist item error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/wishlist/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const item = await storage.getWishlistItem(req.params.id);
+      if (!item || item.userId !== req.userId) {
+        return res.status(404).json({ message: "Wishlist item not found" });
+      }
+
+      const result = updateWishlistSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateWishlistItem(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update wishlist item error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/wishlist/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const item = await storage.getWishlistItem(req.params.id);
+      if (!item || item.userId !== req.userId) {
+        return res.status(404).json({ message: "Wishlist item not found" });
+      }
+
+      await storage.deleteWishlistItem(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete wishlist item error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
