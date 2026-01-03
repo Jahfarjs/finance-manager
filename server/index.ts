@@ -6,12 +6,39 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { connectDB } from "./db";
 
+/**
+ * Safely exit the process after ensuring logs are flushed.
+ * In containerized environments (Railway, Docker), process.exit() may terminate
+ * before stdout/stderr buffers are flushed, causing logs to disappear.
+ * This function ensures logs are written before exit.
+ */
+function safeExit(code: number, message: string): void {
+  // Write directly to stderr (unbuffered) to ensure it's visible
+  process.stderr.write(`\n[FATAL] ${message}\n`);
+  process.stderr.write(`[FATAL] Exiting with code ${code}\n`);
+  
+  // Flush stdout and stderr explicitly
+  if (process.stdout.writable) {
+    process.stdout.end();
+  }
+  if (process.stderr.writable) {
+    process.stderr.end();
+  }
+  
+  // Give a small delay to ensure buffers are flushed before exit
+  // This is critical in containerized environments
+  setTimeout(() => {
+    process.exit(code);
+  }, 100);
+}
+
 // CRITICAL: Validate JWT_SECRET at startup before any routes are registered
 // This prevents runtime crashes when JWT operations are attempted
 if (!process.env.JWT_SECRET) {
-  console.error("JWT_SECRET missing at startup");
-  console.error("Please set JWT_SECRET in your Railway environment variables");
-  process.exit(1);
+  safeExit(
+    1,
+    "JWT_SECRET missing at startup. Please set JWT_SECRET in your Railway environment variables."
+  );
 }
 
 const app = express();
@@ -98,8 +125,8 @@ app.use((req, res, next) => {
   try {
     await connectDB();
   } catch (error) {
-    console.error("Failed to connect to MongoDB:", error);
-    process.exit(1);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    safeExit(1, `Failed to connect to MongoDB: ${errorMessage}`);
   }
 
   await registerRoutes(httpServer, app);

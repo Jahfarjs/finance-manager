@@ -22,7 +22,11 @@ export async function setupVite(server: Server, app: Express) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
+        // Flush logs before exit in development
+        process.stderr.write(`\n[FATAL] Vite error: ${msg}\n`);
+        setTimeout(() => {
+          process.exit(1);
+        }, 100);
       },
     },
     server: serverOptions,
