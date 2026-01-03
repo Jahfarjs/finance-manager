@@ -202,11 +202,13 @@ export class MongoStorage implements IStorage {
   }
 
   async addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined> {
-    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    let monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
     if (!monthDoc) {
       // Create month if it doesn't exist
-      const newMonth = await this.createExpenseMonth(userId, { month, salaryCredited: 0 });
-      monthDoc = newMonth;
+      await this.createExpenseMonth(userId, { month, salaryCredited: 0 });
+      // Fetch the newly created month
+      monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+      if (!monthDoc) return undefined;
     }
 
     // Check if day already exists
