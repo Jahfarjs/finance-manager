@@ -7,6 +7,9 @@ import {
   insertUserSchema,
   loginSchema,
   insertDailyExpenseSchema,
+  insertExpenseDaySchema,
+  updateExpenseDaySchema,
+  updateSalarySchema,
   insertGoalSchema,
   insertEmiSchema,
   insertPlanSchema,
@@ -134,13 +137,13 @@ export async function registerRoutes(
     try {
       const userId = req.userId!;
       
-      const expenses = await storage.getExpenses(userId);
+      const expenseMonths = await storage.getAllExpenseMonths(userId);
       const goals = await storage.getGoals(userId);
       const emis = await storage.getEmis(userId);
       const finance = await storage.getFinance(userId);
 
-      const totalExpenses = expenses.reduce((sum, exp) => sum + exp.total, 0);
-      const salaryCredited = expenses.reduce((sum, exp) => sum + (exp.salaryCredited || 0), 0);
+      const totalExpenses = expenseMonths.reduce((sum, month) => sum + month.monthlyTotal, 0);
+      const salaryCredited = expenseMonths.reduce((sum, month) => sum + month.salaryCredited, 0);
       const balance = salaryCredited - totalExpenses;
       const pendingGoals = goals.filter((g) => g.status === "pending").length;
       const activeEmis = emis.filter((e) => e.remainingAmount > 0).length;
@@ -160,64 +163,210 @@ export async function registerRoutes(
     }
   });
 
-  // Expense routes
-  app.get("/api/expenses", authMiddleware, async (req: AuthRequest, res) => {
+  // Expense routes (month-based)
+  // Get all expense months for a user
+  app.get("/api/expenses/months", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const expenses = await storage.getExpenses(req.userId!);
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-      res.json(limit ? expenses.slice(0, limit) : expenses);
+      const expenseMonths = await storage.getAllExpenseMonths(req.userId!);
+      res.json(expenseMonths);
     } catch (error) {
-      console.error("Get expenses error:", error);
+      console.error("Get expense months error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
 
-  app.post("/api/expenses", authMiddleware, async (req: AuthRequest, res) => {
+  // Get expense data for a specific month
+  app.get("/api/expenses/month/:month", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const result = insertDailyExpenseSchema.safeParse(req.body);
-      if (!result.success) {
-        return res.status(400).json({ message: result.error.errors[0].message });
+      const month = req.params.month;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
       }
 
-      const expense = await storage.createExpense(req.userId!, result.data);
+      const expense = await storage.getExpenseByMonth(req.userId!, month);
+      if (!expense) {
+        return res.status(404).json({ message: "Month not found" });
+      }
       res.json(expense);
     } catch (error) {
-      console.error("Create expense error:", error);
+      console.error("Get expense month error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
 
-  app.put("/api/expenses/:id", authMiddleware, async (req: AuthRequest, res) => {
+  // Create a new expense month
+  app.post("/api/expenses/month", authMiddleware, async (req: AuthRequest, res) => {
     try {
       const result = insertDailyExpenseSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ message: result.error.errors[0].message });
       }
 
-      const expense = await storage.getExpense(req.params.id);
-      if (!expense || expense.userId !== req.userId) {
-        return res.status(404).json({ message: "Expense not found" });
-      }
-
-      const updated = await storage.updateExpense(req.params.id, result.data);
-      res.json(updated);
+      const expense = await storage.createExpenseMonth(req.userId!, result.data);
+      res.json(expense);
     } catch (error) {
-      console.error("Update expense error:", error);
+      console.error("Create expense month error:", error);
+      if (error instanceof Error && error.message === "Month already exists") {
+        return res.status(409).json({ message: error.message });
+      }
       res.status(500).json({ message: "Server error" });
     }
   });
 
-  app.delete("/api/expenses/:id", authMiddleware, async (req: AuthRequest, res) => {
+  // Update salary for a month (creates month if it doesn't exist)
+  app.put("/api/expenses/month/:month/salary", authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const expense = await storage.getExpense(req.params.id);
-      if (!expense || expense.userId !== req.userId) {
-        return res.status(404).json({ message: "Expense not found" });
+      const month = req.params.month;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
       }
 
-      await storage.deleteExpense(req.params.id);
-      res.json({ success: true });
+      const result = updateSalarySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      // Check if month exists
+      let expense = await storage.getExpenseByMonth(req.userId!, month);
+      
+      if (!expense) {
+        // Create the month with the salary if it doesn't exist
+        expense = await storage.createExpenseMonth(req.userId!, {
+          month,
+          salaryCredited: result.data.salaryCredited,
+        });
+      } else {
+        // Update existing month's salary
+        const updated = await storage.updateExpenseMonthSalary(req.userId!, month, result.data.salaryCredited);
+        if (!updated) {
+          return res.status(500).json({ message: "Failed to update salary" });
+        }
+        expense = updated;
+      }
+
+      res.json(expense);
     } catch (error) {
-      console.error("Delete expense error:", error);
+      console.error("Update salary error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Add a day with items to a month
+  app.post("/api/expenses/month/:month/day", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const month = req.params.month;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
+      }
+
+      const result = insertExpenseDaySchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      // Validate that the date belongs to the month
+      const dateMonth = result.data.date.substring(0, 7);
+      if (dateMonth !== month) {
+        return res.status(400).json({ message: "Date must belong to the specified month" });
+      }
+
+      const updated = await storage.addExpenseDay(req.userId!, month, result.data);
+      if (!updated) {
+        return res.status(500).json({ message: "Failed to add expense day" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Add expense day error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Update a day in a month
+  app.put("/api/expenses/month/:month/day/:date", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const month = req.params.month;
+      const date = req.params.date;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      const result = updateExpenseDaySchema.safeParse({ ...req.body, date });
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const expense = await storage.getExpenseByMonth(req.userId!, month);
+      if (!expense) {
+        return res.status(404).json({ message: "Month not found" });
+      }
+
+      const updated = await storage.updateExpenseDay(req.userId!, month, result.data);
+      if (!updated) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Update expense day error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Delete a day from a month
+  app.delete("/api/expenses/month/:month/day/:date", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const month = req.params.month;
+      const date = req.params.date;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      const expense = await storage.getExpenseByMonth(req.userId!, month);
+      if (!expense) {
+        return res.status(404).json({ message: "Month not found" });
+      }
+
+      const updated = await storage.deleteExpenseDay(req.userId!, month, date);
+      if (!updated) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Delete expense day error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Delete a specific item from a day
+  app.delete("/api/expenses/month/:month/day/:date/item/:itemId", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const month = req.params.month;
+      const date = req.params.date;
+      const itemId = req.params.itemId;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM" });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      const expense = await storage.getExpenseByMonth(req.userId!, month);
+      if (!expense) {
+        return res.status(404).json({ message: "Month not found" });
+      }
+
+      const updated = await storage.deleteExpenseDayItem(req.userId!, month, date, itemId);
+      if (!updated) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Delete expense item error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

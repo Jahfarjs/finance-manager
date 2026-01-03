@@ -24,29 +24,60 @@ export type UpdateUser = z.infer<typeof updateUserSchema>;
 
 // Expense Item
 export const expenseItemSchema = z.object({
+  _id: z.string().optional(), // MongoDB _id for items
   purpose: z.string().min(1, "Purpose is required"),
   amount: z.number().min(0, "Amount must be positive"),
 });
 
-// Daily Expense Schema
-export const dailyExpenseSchema = z.object({
-  id: z.string(),
-  userId: z.string(),
-  date: z.string(),
-  expenses: z.array(expenseItemSchema),
-  total: z.number(), // auto-calculated
-  salaryCredited: z.number().default(0),
+// Day Schema (within a month)
+export const expenseDaySchema = z.object({
+  date: z.string(), // YYYY-MM-DD format
+  items: z.array(expenseItemSchema),
+  dayTotal: z.number(), // auto-calculated
 });
 
+// Daily Expense Schema (MONTH-LEVEL)
+export const dailyExpenseSchema = z.object({
+  _id: z.string().optional(), // MongoDB _id
+  id: z.string(), // UUID for API
+  userId: z.string(),
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"), // YYYY-MM format
+  salaryCredited: z.number().default(0),
+  days: z.array(expenseDaySchema),
+  monthlyTotal: z.number(), // auto-calculated
+  balance: z.number(), // auto-calculated (salaryCredited - monthlyTotal)
+});
+
+// Schema for creating/updating a month
 export const insertDailyExpenseSchema = z.object({
-  date: z.string(),
-  expenses: z.array(expenseItemSchema),
-  salaryCredited: z.number().optional(),
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"),
+  salaryCredited: z.number().min(0).optional(),
+});
+
+// Schema for adding a day to a month
+export const insertExpenseDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  items: z.array(expenseItemSchema).min(1, "At least one item is required"),
+});
+
+// Schema for updating a day
+export const updateExpenseDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  items: z.array(expenseItemSchema),
+});
+
+// Schema for updating salary
+export const updateSalarySchema = z.object({
+  salaryCredited: z.number().min(0),
 });
 
 export type DailyExpense = z.infer<typeof dailyExpenseSchema>;
 export type InsertDailyExpense = z.infer<typeof insertDailyExpenseSchema>;
 export type ExpenseItem = z.infer<typeof expenseItemSchema>;
+export type ExpenseDay = z.infer<typeof expenseDaySchema>;
+export type InsertExpenseDay = z.infer<typeof insertExpenseDaySchema>;
+export type UpdateExpenseDay = z.infer<typeof updateExpenseDaySchema>;
+export type UpdateSalary = z.infer<typeof updateSalarySchema>;
 
 // Monthly Goal Schema
 export const goalSchema = z.object({

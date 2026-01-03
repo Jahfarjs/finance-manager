@@ -5,6 +5,9 @@ import type {
   InsertUser,
   DailyExpense,
   InsertDailyExpense,
+  InsertExpenseDay,
+  UpdateExpenseDay,
+  UpdateSalary,
   Goal,
   InsertGoal,
   EMI,
@@ -31,12 +34,15 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
 
-  // Daily Expense methods
-  getExpenses(userId: string): Promise<DailyExpense[]>;
-  getExpense(id: string): Promise<DailyExpense | undefined>;
-  createExpense(userId: string, data: InsertDailyExpense): Promise<DailyExpense>;
-  updateExpense(id: string, data: InsertDailyExpense): Promise<DailyExpense | undefined>;
-  deleteExpense(id: string): Promise<boolean>;
+  // Daily Expense methods (month-based)
+  getExpenseByMonth(userId: string, month: string): Promise<DailyExpense | undefined>;
+  getAllExpenseMonths(userId: string): Promise<DailyExpense[]>;
+  createExpenseMonth(userId: string, data: InsertDailyExpense): Promise<DailyExpense>;
+  updateExpenseMonthSalary(userId: string, month: string, salaryCredited: number): Promise<DailyExpense | undefined>;
+  addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined>;
+  updateExpenseDay(userId: string, month: string, data: UpdateExpenseDay): Promise<DailyExpense | undefined>;
+  deleteExpenseDay(userId: string, month: string, date: string): Promise<DailyExpense | undefined>;
+  deleteExpenseDayItem(userId: string, month: string, date: string, itemId: string): Promise<DailyExpense | undefined>;
 
   // Goal methods
   getGoals(userId: string): Promise<Goal[]>;
@@ -114,57 +120,205 @@ export class MongoStorage implements IStorage {
     return user || undefined;
   }
 
-  // Daily Expense methods
-  async getExpenses(userId: string): Promise<DailyExpense[]> {
-    const expenses = await DailyExpenseModel.find({ userId })
-      .sort({ date: -1 })
-      .lean();
-    return expenses;
-  }
+  // Helper function to recalculate totals for a month document
+  private async recalculateMonthTotals(monthDoc: DailyExpense): Promise<DailyExpense> {
+    // Calculate dayTotal for each day
+    monthDoc.days.forEach((day) => {
+      day.dayTotal = day.items.reduce((sum, item) => sum + item.amount, 0);
+    });
 
-  async getExpense(id: string): Promise<DailyExpense | undefined> {
-    const expense = await DailyExpenseModel.findOne({ id }).lean();
-    return expense || undefined;
-  }
+    // Calculate monthlyTotal from all days
+    monthDoc.monthlyTotal = monthDoc.days.reduce((sum, day) => sum + day.dayTotal, 0);
 
-  async createExpense(userId: string, data: InsertDailyExpense): Promise<DailyExpense> {
-    const id = randomUUID();
-    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const expense: DailyExpense = {
-      id,
-      userId,
-      date: data.date,
-      expenses: data.expenses,
-      total,
-      salaryCredited: data.salaryCredited || 0,
-    };
-    await DailyExpenseModel.create(expense);
-    return expense;
-  }
+    // Calculate balance
+    monthDoc.balance = monthDoc.salaryCredited - monthDoc.monthlyTotal;
 
-  async updateExpense(id: string, data: InsertDailyExpense): Promise<DailyExpense | undefined> {
-    const existingExpense = await DailyExpenseModel.findOne({ id }).lean();
-    if (!existingExpense) return undefined;
-    
-    const total = data.expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const updatedExpense = await DailyExpenseModel.findOneAndUpdate(
-      { id },
+    // Save and return
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { id: monthDoc.id },
       {
         $set: {
-          date: data.date,
-          expenses: data.expenses,
-          total,
-          salaryCredited: data.salaryCredited !== undefined ? data.salaryCredited : existingExpense.salaryCredited,
+          days: monthDoc.days,
+          monthlyTotal: monthDoc.monthlyTotal,
+          balance: monthDoc.balance,
         },
       },
       { new: true, lean: true }
     );
-    return updatedExpense || undefined;
+    return updated || monthDoc;
   }
 
-  async deleteExpense(id: string): Promise<boolean> {
-    const result = await DailyExpenseModel.deleteOne({ id });
-    return result.deletedCount > 0;
+  // Daily Expense methods (month-based)
+  async getExpenseByMonth(userId: string, month: string): Promise<DailyExpense | undefined> {
+    const expense = await DailyExpenseModel.findOne({ userId, month }).lean();
+    return expense || undefined;
+  }
+
+  async getAllExpenseMonths(userId: string): Promise<DailyExpense[]> {
+    const expenses = await DailyExpenseModel.find({ userId })
+      .sort({ month: -1 })
+      .lean();
+    return expenses;
+  }
+
+  async createExpenseMonth(userId: string, data: InsertDailyExpense): Promise<DailyExpense> {
+    // Check if month already exists
+    const existing = await DailyExpenseModel.findOne({ userId, month: data.month }).lean();
+    if (existing) {
+      throw new Error("Month already exists");
+    }
+
+    const id = randomUUID();
+    const expense: DailyExpense = {
+      id,
+      userId,
+      month: data.month,
+      salaryCredited: data.salaryCredited || 0,
+      days: [],
+      monthlyTotal: 0,
+      balance: data.salaryCredited || 0,
+    };
+    
+    const created = await DailyExpenseModel.create(expense);
+    return created.toObject();
+  }
+
+  async updateExpenseMonthSalary(userId: string, month: string, salaryCredited: number): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) return undefined;
+
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      {
+        $set: { salaryCredited },
+      },
+      { new: true, lean: true }
+    );
+
+    if (!updated) return undefined;
+
+    // Recalculate balance
+    return await this.recalculateMonthTotals(updated);
+  }
+
+  async addExpenseDay(userId: string, month: string, data: InsertExpenseDay): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) {
+      // Create month if it doesn't exist
+      const newMonth = await this.createExpenseMonth(userId, { month, salaryCredited: 0 });
+      monthDoc = newMonth;
+    }
+
+    // Check if day already exists
+    const dayIndex = monthDoc.days.findIndex((d) => d.date === data.date);
+    
+    let updatedDays = [...monthDoc.days];
+    if (dayIndex >= 0) {
+      // Append items to existing day
+      updatedDays[dayIndex] = {
+        ...updatedDays[dayIndex],
+        items: [...updatedDays[dayIndex].items, ...data.items],
+      };
+    } else {
+      // Create new day
+      const dayTotal = data.items.reduce((sum, item) => sum + item.amount, 0);
+      updatedDays.push({
+        date: data.date,
+        items: data.items,
+        dayTotal,
+      });
+    }
+
+    // Update the month document
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      { $set: { days: updatedDays } },
+      { new: true, lean: true }
+    );
+
+    if (!updated) return undefined;
+
+    // Recalculate totals
+    return await this.recalculateMonthTotals(updated);
+  }
+
+  async updateExpenseDay(userId: string, month: string, data: UpdateExpenseDay): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) return undefined;
+
+    const dayIndex = monthDoc.days.findIndex((d) => d.date === data.date);
+    if (dayIndex < 0) return undefined;
+
+    const updatedDays = [...monthDoc.days];
+    const dayTotal = data.items.reduce((sum, item) => sum + item.amount, 0);
+    updatedDays[dayIndex] = {
+      date: data.date,
+      items: data.items,
+      dayTotal,
+    };
+
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      { $set: { days: updatedDays } },
+      { new: true, lean: true }
+    );
+
+    if (!updated) return undefined;
+
+    // Recalculate totals
+    return await this.recalculateMonthTotals(updated);
+  }
+
+  async deleteExpenseDay(userId: string, month: string, date: string): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) return undefined;
+
+    const updatedDays = monthDoc.days.filter((d) => d.date !== date);
+
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      { $set: { days: updatedDays } },
+      { new: true, lean: true }
+    );
+
+    if (!updated) return undefined;
+
+    // Recalculate totals
+    return await this.recalculateMonthTotals(updated);
+  }
+
+  async deleteExpenseDayItem(userId: string, month: string, date: string, itemId: string): Promise<DailyExpense | undefined> {
+    const monthDoc = await DailyExpenseModel.findOne({ userId, month }).lean();
+    if (!monthDoc) return undefined;
+
+    const dayIndex = monthDoc.days.findIndex((d) => d.date === date);
+    if (dayIndex < 0) return undefined;
+
+    const updatedDays = [...monthDoc.days];
+    // Filter out the item with matching _id (handle both ObjectId and string)
+    updatedDays[dayIndex] = {
+      ...updatedDays[dayIndex],
+      items: updatedDays[dayIndex].items.filter((item, idx) => {
+        const itemMongoId = (item as any)._id;
+        if (itemMongoId) {
+          // Compare MongoDB ObjectId
+          return itemMongoId.toString() !== itemId;
+        }
+        // Fallback to index-based deletion if no _id
+        return idx.toString() !== itemId;
+      }),
+    };
+
+    const updated = await DailyExpenseModel.findOneAndUpdate(
+      { userId, month },
+      { $set: { days: updatedDays } },
+      { new: true, lean: true }
+    );
+
+    if (!updated) return undefined;
+
+    // Recalculate totals
+    return await this.recalculateMonthTotals(updated);
   }
 
   // Goal methods

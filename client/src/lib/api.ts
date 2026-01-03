@@ -6,6 +6,17 @@
 const rawBase = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
 const normalizedBase = rawBase?.replace(/\/+$/, "");
 
+// CRITICAL: Validate that if VITE_API_BASE_URL is provided, it must include protocol (https:// or http://)
+// Without protocol, browsers treat it as a relative path and prepend the current origin
+if (normalizedBase && !/^https?:\/\//i.test(normalizedBase)) {
+  const errorMsg = `[api.ts] ERROR: VITE_API_BASE_URL must include protocol (https:// or http://). 
+Current value: "${normalizedBase}"
+Expected format: "https://your-backend-domain.com" or "https://your-backend-domain.com/api"
+This causes requests to be treated as relative paths, resulting in 404 errors.`;
+  console.error(errorMsg);
+  throw new Error(errorMsg);
+}
+
 // Fix: Convert HTTPS localhost to HTTP (local development servers typically use HTTP)
 // This prevents ERR_SSL_PROTOCOL_ERROR when VITE_API_BASE_URL is set to https://localhost
 let fixedBase = normalizedBase;
@@ -30,6 +41,17 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public response?: any
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -44,7 +66,7 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(error.message || "Request failed");
+    throw new ApiError(error.message || "Request failed", response.status, error);
   }
 
   return response.json();
