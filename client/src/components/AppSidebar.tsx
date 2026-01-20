@@ -56,9 +56,11 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-            FT
-          </div>
+          <img
+            src="/logo.png"
+            alt="FinTrack logo"
+            className="h-10 w-10 rounded-lg object-contain"
+          />
           <div className="flex flex-col">
             <span className="font-semibold text-sidebar-foreground">FinTrack</span>
             <span className="text-xs text-muted-foreground">Personal Finance</span>

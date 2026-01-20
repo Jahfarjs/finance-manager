@@ -105,9 +105,11 @@ export default function AuthPage() {
         <div className="hidden lg:flex flex-col justify-center p-12 bg-sidebar">
           <div className="max-w-md">
             <div className="flex items-center gap-3 mb-8">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xl">
-                FT
-              </div>
+              <img
+                src="/logo.png"
+                alt="FinTrack logo"
+                className="h-12 w-12 rounded-xl object-contain"
+              />
               <div>
                 <h1 className="text-2xl font-bold text-sidebar-foreground">FinTrack</h1>
                 <p className="text-sm text-muted-foreground">Personal Finance Manager</p>
@@ -141,9 +143,11 @@ export default function AuthPage() {
           <Card className="w-full max-w-md border-0 shadow-none lg:border lg:shadow-sm">
             <CardHeader className="text-center lg:hidden">
               <div className="flex items-center justify-center gap-2 mb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-                  FT
-                </div>
+                <img
+                  src="/logo.png"
+                  alt="FinTrack logo"
+                  className="h-10 w-10 rounded-lg object-contain"
+                />
                 <span className="text-xl font-bold">FinTrack</span>
               </div>
             </CardHeader>
