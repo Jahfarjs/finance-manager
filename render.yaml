@@ -1,0 +1,24 @@
+# Render Blueprint: Backend API only (Web Service)
+# Use this when hosting the backend API on Render with frontend elsewhere (e.g. Netlify).
+# See DEPLOYMENT_RENDER.md for full setup and required env vars.
+
+services:
+  - type: web
+    name: fm-backend-api
+    runtime: node
+
+    buildCommand: npm install && npm run build:backend
+    startCommand: npm start
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_HOSTED_SEPARATELY
+        value: "true"
+      # Render will prompt for these during Blueprint creation (do not commit real values):
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

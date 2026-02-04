@@ -37,7 +37,7 @@ function safeExit(code: number, message: string): void {
 if (!process.env.JWT_SECRET) {
   safeExit(
     1,
-    "JWT_SECRET missing at startup. Please set JWT_SECRET in your Railway environment variables."
+    "JWT_SECRET missing at startup. Please set JWT_SECRET in your environment variables (e.g. Render, Railway)."
   );
 }
 
