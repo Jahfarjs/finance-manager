@@ -27,9 +27,8 @@ const allowlist = [
   "stripe",
   "uuid",
   "ws",
-  "xlsx",
+  "xlsx"
 ];
-
 
 async function buildBackend() {
   // Only clean dist folder if it exists, but keep public folder for frontend
