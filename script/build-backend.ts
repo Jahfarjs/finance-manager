@@ -11,7 +11,6 @@ const allowlist = [
   "axios",
   "connect-pg-simple",
   "cors",
-  "date-fns",
   "drizzle-orm",
   "drizzle-zod",
   "express",
@@ -29,9 +28,8 @@ const allowlist = [
   "uuid",
   "ws",
   "xlsx",
-  "zod",
-  "zod-validation-error",
 ];
+
 
 async function buildBackend() {
   // Only clean dist folder if it exists, but keep public folder for frontend
