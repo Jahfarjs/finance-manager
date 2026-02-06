@@ -5,7 +5,7 @@
 **Answer: ONE `.env` file at the project root** (same level as `package.json`)
 
 This is a **monorepo** structure where:
-- **Backend** (`server/`) reads from `process.env` (Node.js environment)
+- **Backend** (`backend/`) reads from `process.env` (Node.js environment)
 - **Frontend** (`client/`) reads from `import.meta.env` (Vite environment)
 
 Both can share the same `.env` file at the root because:

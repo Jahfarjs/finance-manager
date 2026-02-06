@@ -60,3 +60,4 @@ export async function setupVite(server: Server, app: Express) {
     }
   });
 }
+

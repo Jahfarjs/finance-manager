@@ -38,7 +38,7 @@ async function buildBackend() {
     // File doesn't exist, that's fine
   }
 
-  console.log("building server...");
+  console.log("building backend...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
   const allDeps = [
     ...Object.keys(pkg.dependencies || {}),
@@ -47,7 +47,7 @@ async function buildBackend() {
   const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
   await esbuild({
-    entryPoints: ["server/index.ts"],
+    entryPoints: ["backend/index.ts"],
     platform: "node",
     bundle: true,
     format: "cjs",

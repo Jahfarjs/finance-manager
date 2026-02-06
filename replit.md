@@ -13,10 +13,11 @@ FinTrack is a comprehensive personal finance and task management web application
 │       ├── hooks/           # Custom React hooks
 │       ├── lib/             # Utility functions and API client
 │       └── pages/           # Page components
-├── server/                  # Backend Express application
-│   ├── index.ts             # Server entry point
-│   ├── routes.ts            # API route definitions
-│   └── storage.ts           # In-memory storage implementation
+├── backend/                # Backend Express application
+│   ├── index.ts            # Server entry point
+│   ├── routes.ts           # API route definitions (controllers)
+│   ├── models/             # Mongoose models (data layer)
+│   └── storage.ts          # MongoDB storage implementation
 ├── shared/                  # Shared code between frontend and backend
 │   └── schema.ts            # TypeScript schemas and types (Zod)
 └── design_guidelines.md     # UI/UX design guidelines

@@ -5,13 +5,13 @@ async function buildBackend() {
   // Clean previous build
   await rm("dist", { recursive: true, force: true });
 
-  console.log("building server...");
+  console.log("building backend...");
 
   // Read package.json to externalize all runtime dependencies
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 
   await build({
-    entryPoints: ["server/index.ts"],
+    entryPoints: ["backend/index.ts"],
     bundle: true,
     platform: "node",
     format: "cjs",
