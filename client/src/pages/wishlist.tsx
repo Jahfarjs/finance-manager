@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { Wishlist } from "@shared/schema";
@@ -42,6 +43,7 @@ export default function WishlistPage() {
   const [selectedItem, setSelectedItem] = useState<Wishlist | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -324,7 +326,7 @@ export default function WishlistPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteMutation.mutate(item.id)}
+                        onClick={() => setDeleteConfirm({ open: true, id: item.id })}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -363,6 +365,16 @@ export default function WishlistPage() {
           })}
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, id: open ? deleteConfirm.id : null })}
+        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+        variant="delete"
+        title="Delete Wish"
+        description="Are you sure you want to delete this wish? This action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }

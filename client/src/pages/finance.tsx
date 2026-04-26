@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { Finance } from "@shared/schema";
@@ -28,6 +29,7 @@ type FinanceFormData = z.infer<typeof financeFormSchema>;
 export default function FinancePage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<{ type: "debit" | "credit"; index: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: "debit" | "credit" | null; index: number | null }>({ open: false, type: null, index: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -283,7 +285,7 @@ export default function FinancePage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteEntryMutation.mutate({ type: "debit", index })}
+                          onClick={() => setDeleteConfirm({ open: true, type: "debit", index })}
                           data-testid={`button-delete-debit-${index}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -339,7 +341,7 @@ export default function FinancePage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteEntryMutation.mutate({ type: "credit", index })}
+                          onClick={() => setDeleteConfirm({ open: true, type: "credit", index })}
                           data-testid={`button-delete-credit-${index}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -357,6 +359,16 @@ export default function FinancePage() {
           </Card>
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, type: open ? deleteConfirm.type : null, index: open ? deleteConfirm.index : null })}
+        onConfirm={() => deleteConfirm.type !== null && deleteConfirm.index !== null && deleteEntryMutation.mutate({ type: deleteConfirm.type, index: deleteConfirm.index })}
+        variant="delete"
+        title="Delete Entry"
+        description="Are you sure you want to delete this finance entry? This action cannot be undone."
+        isLoading={deleteEntryMutation.isPending}
+      />
     </div>
   );
 }

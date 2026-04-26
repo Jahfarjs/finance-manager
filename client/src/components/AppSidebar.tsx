@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import {
   LayoutDashboard,
@@ -27,6 +28,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 const navigationItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -44,6 +46,7 @@ const navigationItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   const getInitials = (name: string) => {
     return name
@@ -112,7 +115,7 @@ export function AppSidebar() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={logout}
+            onClick={() => setLogoutModalOpen(true)}
             data-testid="button-logout"
             className="shrink-0"
           >
@@ -120,6 +123,13 @@ export function AppSidebar() {
           </Button>
         </div>
       </SidebarFooter>
+
+      <ConfirmationModal
+        open={logoutModalOpen}
+        onOpenChange={setLogoutModalOpen}
+        onConfirm={logout}
+        variant="logout"
+      />
     </Sidebar>
   );
 }

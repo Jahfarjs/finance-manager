@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { Goal } from "@shared/schema";
@@ -25,6 +26,7 @@ type GoalFormData = z.infer<typeof goalFormSchema>;
 export default function GoalsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -260,7 +262,7 @@ export default function GoalsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteMutation.mutate(goal.id)}
+                          onClick={() => setDeleteConfirm({ open: true, id: goal.id })}
                           data-testid={`button-delete-goal-${goal.id}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -316,7 +318,7 @@ export default function GoalsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteMutation.mutate(goal.id)}
+                          onClick={() => setDeleteConfirm({ open: true, id: goal.id })}
                           data-testid={`button-delete-goal-${goal.id}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -330,6 +332,16 @@ export default function GoalsPage() {
           </Card>
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, id: open ? deleteConfirm.id : null })}
+        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+        variant="delete"
+        title="Delete Goal"
+        description="Are you sure you want to delete this goal? This action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }

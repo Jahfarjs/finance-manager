@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -41,6 +42,8 @@ export default function ProfilePage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordChangeConfirmOpen, setPasswordChangeConfirmOpen] = useState(false);
+  const [pendingPasswordData, setPendingPasswordData] = useState<ChangePasswordFormData | null>(null);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileFormSchema),
@@ -102,6 +105,7 @@ export default function ProfilePage() {
   };
 
   return (
+    <>
     <div className="p-6 lg:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
@@ -211,7 +215,10 @@ export default function ProfilePage() {
             <CardDescription>Update your account password</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={changePasswordForm.handleSubmit((data) => changePasswordMutation.mutate(data))} className="space-y-6">
+            <form onSubmit={changePasswordForm.handleSubmit((data) => {
+              setPendingPasswordData(data);
+              setPasswordChangeConfirmOpen(true);
+            })} className="space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="currentPassword">Current Password</Label>
@@ -329,5 +336,24 @@ export default function ProfilePage() {
         </Card>
       </div>
     </div>
+
+      <ConfirmationModal
+        open={passwordChangeConfirmOpen}
+        onOpenChange={(open) => {
+          setPasswordChangeConfirmOpen(open);
+          if (!open) setPendingPasswordData(null);
+        }}
+        onConfirm={() => {
+          if (pendingPasswordData) {
+            changePasswordMutation.mutate(pendingPasswordData);
+            setPendingPasswordData(null);
+          }
+        }}
+        variant="password"
+        title="Change Password"
+        description="Are you sure you want to change your password? Make sure you remember your new password before confirming."
+        isLoading={changePasswordMutation.isPending}
+      />
+    </>
   );
 }

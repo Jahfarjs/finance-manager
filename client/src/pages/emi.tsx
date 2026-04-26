@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { EMI } from "@shared/schema";
@@ -65,6 +66,7 @@ export default function EMIPage() {
   const [kuriAmount, setKuriAmount] = useState("");
   const [kuriDate, setKuriDate] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "emi" | "kuri">("all");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -615,7 +617,7 @@ export default function EMIPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(emi.id); }}
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, id: emi.id }); }}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -729,6 +731,16 @@ export default function EMIPage() {
           })}
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, id: open ? deleteConfirm.id : null })}
+        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+        variant="delete"
+        title="Delete EMI / Kuri"
+        description="Are you sure you want to delete this entry? All payment records will be lost and this action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }

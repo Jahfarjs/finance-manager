@@ -15,6 +15,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,8 @@ export default function ExpensesPage() {
   const [isDayDialogOpen, setIsDayDialogOpen] = useState(false);
   const [isSalaryDialogOpen, setIsSalaryDialogOpen] = useState(false);
   const [isBalanceDistributionDialogOpen, setIsBalanceDistributionDialogOpen] = useState(false);
+  const [deleteDayConfirm, setDeleteDayConfirm] = useState<{ open: boolean; date: string | null }>({ open: false, date: null });
+  const [deleteItemConfirm, setDeleteItemConfirm] = useState<{ open: boolean; date: string | null; itemId: string | null }>({ open: false, date: null, itemId: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -713,7 +716,7 @@ export default function ExpensesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteDayMutation.mutate(day.date)}
+                        onClick={() => setDeleteDayConfirm({ open: true, date: day.date })}
                         data-testid={`button-delete-day-${day.date}`}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -736,7 +739,7 @@ export default function ExpensesPage() {
                             size="icon"
                             className="h-6 w-6"
                             onClick={() => {
-                              deleteItemMutation.mutate({ date: day.date, itemId });
+                              setDeleteItemConfirm({ open: true, date: day.date, itemId });
                             }}
                             data-testid={`button-delete-item-${day.date}-${idx}`}
                           >
@@ -752,6 +755,26 @@ export default function ExpensesPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmationModal
+        open={deleteDayConfirm.open}
+        onOpenChange={(open) => setDeleteDayConfirm({ open, date: open ? deleteDayConfirm.date : null })}
+        onConfirm={() => deleteDayConfirm.date && deleteDayMutation.mutate(deleteDayConfirm.date)}
+        variant="delete"
+        title="Delete Expense Day"
+        description="Are you sure you want to delete all expenses for this day? This action cannot be undone."
+        isLoading={deleteDayMutation.isPending}
+      />
+
+      <ConfirmationModal
+        open={deleteItemConfirm.open}
+        onOpenChange={(open) => setDeleteItemConfirm({ open, date: open ? deleteItemConfirm.date : null, itemId: open ? deleteItemConfirm.itemId : null })}
+        onConfirm={() => deleteItemConfirm.date && deleteItemConfirm.itemId && deleteItemMutation.mutate({ date: deleteItemConfirm.date, itemId: deleteItemConfirm.itemId })}
+        variant="delete"
+        title="Delete Expense Item"
+        description="Are you sure you want to delete this expense item? This action cannot be undone."
+        isLoading={deleteItemMutation.isPending}
+      />
     </div>
   );
 }

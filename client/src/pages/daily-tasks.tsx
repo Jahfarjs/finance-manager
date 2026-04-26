@@ -34,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { DailyTask } from "@shared/schema";
@@ -88,6 +89,7 @@ export default function DailyTasksPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -486,7 +488,7 @@ export default function DailyTasksPage() {
                                 size="icon"
                                 className="h-7 w-7"
                                 onClick={() =>
-                                  deleteMutation.mutate(task.id)
+                                  setDeleteConfirm({ open: true, id: task.id })
                                 }
                               >
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -597,7 +599,7 @@ export default function DailyTasksPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() =>
-                                deleteMutation.mutate(task.id)
+                                setDeleteConfirm({ open: true, id: task.id })
                               }
                             >
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -727,7 +729,7 @@ export default function DailyTasksPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() =>
-                                deleteMutation.mutate(task.id)
+                                setDeleteConfirm({ open: true, id: task.id })
                               }
                             >
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -777,6 +779,16 @@ export default function DailyTasksPage() {
           )}
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, id: open ? deleteConfirm.id : null })}
+        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+        variant="delete"
+        title="Delete Task"
+        description="Are you sure you want to delete this task? All completion history will be lost and this action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }

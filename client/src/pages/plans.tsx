@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { Plan } from "@shared/schema";
@@ -27,6 +28,7 @@ type PlanFormData = z.infer<typeof planFormSchema>;
 export default function PlansPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -237,7 +239,7 @@ export default function PlansPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => deleteMutation.mutate(plan.id)}
+                      onClick={() => setDeleteConfirm({ open: true, id: plan.id })}
                       data-testid={`button-delete-plan-${plan.id}`}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -279,6 +281,16 @@ export default function PlansPage() {
           ))}
         </div>
       )}
+
+      <ConfirmationModal
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, id: open ? deleteConfirm.id : null })}
+        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+        variant="delete"
+        title="Delete Plan"
+        description="Are you sure you want to delete this plan? This action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }
