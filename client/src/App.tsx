@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
 import { PageLoader } from "@/components/LoadingSpinner";
+import { PWAInstallButton } from "@/components/PWAInstallButton";
 
 import AuthPage from "@/pages/auth";
 import DashboardPage from "@/pages/dashboard";
@@ -66,7 +67,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between gap-2 px-4 py-2 border-b shrink-0">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <PWAInstallButton />
+              <ThemeToggle />
+            </div>
           </header>
           <main className="flex-1 overflow-auto">{children}</main>
         </div>
