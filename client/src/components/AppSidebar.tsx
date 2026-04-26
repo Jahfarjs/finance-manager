@@ -10,6 +10,7 @@ import {
   LogOut,
   BookOpen,
   Heart,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 const navigationItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Daily Expenses", url: "/expenses", icon: Wallet },
+  { title: "Task Sheet", url: "/daily-tasks", icon: ClipboardCheck },
   { title: "EMI Management", url: "/emi", icon: CreditCard },
   { title: "Goals", url: "/goals", icon: Target },
   { title: "Plans", url: "/plans", icon: Calendar },

@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import {
   insertUserSchema,
   loginSchema,
+  changePasswordSchema,
   insertDailyExpenseSchema,
   insertExpenseDaySchema,
   updateExpenseDaySchema,
@@ -20,6 +21,8 @@ import {
   updatePersonalMemorySchema,
   insertWishlistSchema,
   updateWishlistSchema,
+  insertDailyTaskSchema,
+  updateDailyTaskSchema,
 } from "@shared/schema";
 
 // Utility function to get JWT secret - only called at runtime inside route handlers
@@ -80,7 +83,7 @@ export async function registerRoutes(
       const { password, ...userWithoutPassword } = user;
       res.json({ token, user: userWithoutPassword });
     } catch (error) {
-      console.error("Signup error:", error);
+
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -111,7 +114,6 @@ export async function registerRoutes(
       const { password, ...userWithoutPassword } = user;
       res.json({ token, user: userWithoutPassword });
     } catch (error) {
-      console.error("Login error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -132,7 +134,33 @@ export async function registerRoutes(
       const { password, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
     } catch (error) {
-      console.error("Update profile error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Change password
+  app.post("/api/auth/change-password", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = changePasswordSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isValidPassword = await bcrypt.compare(result.data.currentPassword, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      const hashedPassword = await bcrypt.hash(result.data.newPassword, 10);
+      await storage.updateUser(req.userId!, { password: hashedPassword });
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -141,15 +169,19 @@ export async function registerRoutes(
   app.get("/api/dashboard/stats", authMiddleware, async (req: AuthRequest, res) => {
     try {
       const userId = req.userId!;
-      
+
       const expenseMonths = await storage.getAllExpenseMonths(userId);
       const goals = await storage.getGoals(userId);
       const emis = await storage.getEmis(userId);
       const finance = await storage.getFinance(userId);
 
-      const totalExpenses = expenseMonths.reduce((sum, month) => sum + month.monthlyTotal, 0);
-      const salaryCredited = expenseMonths.reduce((sum, month) => sum + month.salaryCredited, 0);
+      // Current month stats
+      const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+      const currentMonthData = expenseMonths.find((m) => m.month === currentMonth);
+      const totalExpenses = currentMonthData?.monthlyTotal || 0;
+      const salaryCredited = currentMonthData?.salaryCredited || 0;
       const balance = salaryCredited - totalExpenses;
+
       const pendingGoals = goals.filter((g) => g.status === "pending").length;
       const activeEmis = emis.filter((e) => e.remainingAmount > 0).length;
 
@@ -163,7 +195,6 @@ export async function registerRoutes(
         salaryCredited,
       });
     } catch (error) {
-      console.error("Dashboard stats error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -175,7 +206,6 @@ export async function registerRoutes(
       const expenseMonths = await storage.getAllExpenseMonths(req.userId!);
       res.json(expenseMonths);
     } catch (error) {
-      console.error("Get expense months error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -194,7 +224,6 @@ export async function registerRoutes(
       }
       res.json(expense);
     } catch (error) {
-      console.error("Get expense month error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -210,7 +239,6 @@ export async function registerRoutes(
       const expense = await storage.createExpenseMonth(req.userId!, result.data);
       res.json(expense);
     } catch (error) {
-      console.error("Create expense month error:", error);
       if (error instanceof Error && error.message === "Month already exists") {
         return res.status(409).json({ message: error.message });
       }
@@ -251,7 +279,6 @@ export async function registerRoutes(
 
       res.json(expense);
     } catch (error) {
-      console.error("Update salary error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -283,7 +310,6 @@ export async function registerRoutes(
 
       res.json(updated);
     } catch (error) {
-      console.error("Update balance distribution error:", error);
       if (error instanceof Error && error.message.includes("must equal")) {
         return res.status(400).json({ message: error.message });
       }
@@ -316,7 +342,6 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (error) {
-      console.error("Add expense day error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -349,7 +374,6 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (error) {
-      console.error("Update expense day error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -377,7 +401,6 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (error) {
-      console.error("Delete expense day error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -406,7 +429,6 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (error) {
-      console.error("Delete expense item error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -417,7 +439,6 @@ export async function registerRoutes(
       const goals = await storage.getGoals(req.userId!);
       res.json(goals);
     } catch (error) {
-      console.error("Get goals error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -432,7 +453,6 @@ export async function registerRoutes(
       const goal = await storage.createGoal(req.userId!, result.data);
       res.json(goal);
     } catch (error) {
-      console.error("Create goal error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -447,7 +467,6 @@ export async function registerRoutes(
       const updated = await storage.updateGoal(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
-      console.error("Update goal error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -462,7 +481,6 @@ export async function registerRoutes(
       await storage.deleteGoal(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Delete goal error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -473,7 +491,6 @@ export async function registerRoutes(
       const emis = await storage.getEmis(req.userId!);
       res.json(emis);
     } catch (error) {
-      console.error("Get emis error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -488,7 +505,25 @@ export async function registerRoutes(
       const emi = await storage.createEmi(req.userId!, result.data);
       res.json(emi);
     } catch (error) {
-      console.error("Create emi error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/emis/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const emi = await storage.getEmi(req.params.id);
+      if (!emi || emi.userId !== req.userId) {
+        return res.status(404).json({ message: "EMI not found" });
+      }
+
+      const result = insertEmiSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateEmi(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -506,7 +541,28 @@ export async function registerRoutes(
       const updated = await storage.updateEmiSchedule(req.params.id, monthIndex, status);
       res.json(updated);
     } catch (error) {
-      console.error("Update emi schedule error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/emis/:id/kuri", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const emi = await storage.getEmi(req.params.id);
+      if (!emi || emi.userId !== req.userId) {
+        return res.status(404).json({ message: "EMI not found" });
+      }
+      if (!emi.isKuri) {
+        return res.status(400).json({ message: "This EMI is not a Kuri" });
+      }
+
+      const { amount, date } = req.body;
+      if (typeof amount !== "number" || amount < 0) {
+        return res.status(400).json({ message: "Valid amount is required" });
+      }
+
+      const updated = await storage.updateKuriReceived(req.params.id, amount, date);
+      res.json(updated);
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -521,7 +577,6 @@ export async function registerRoutes(
       await storage.deleteEmi(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Delete emi error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -532,7 +587,6 @@ export async function registerRoutes(
       const plans = await storage.getPlans(req.userId!);
       res.json(plans);
     } catch (error) {
-      console.error("Get plans error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -547,7 +601,6 @@ export async function registerRoutes(
       const plan = await storage.createPlan(req.userId!, result.data);
       res.json(plan);
     } catch (error) {
-      console.error("Create plan error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -562,7 +615,6 @@ export async function registerRoutes(
       const updated = await storage.updatePlan(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
-      console.error("Update plan error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -577,7 +629,6 @@ export async function registerRoutes(
       const updated = await storage.updatePlan(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
-      console.error("Update plan error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -592,7 +643,6 @@ export async function registerRoutes(
       await storage.deletePlan(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Delete plan error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -603,7 +653,6 @@ export async function registerRoutes(
       const finance = await storage.getFinance(req.userId!);
       res.json(finance);
     } catch (error) {
-      console.error("Get finance error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -619,7 +668,30 @@ export async function registerRoutes(
       const finance = await storage.addFinanceEntry(req.userId!, type, { person, amount });
       res.json(finance);
     } catch (error) {
-      console.error("Add finance entry error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/finance/entry/:type/:index", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const type = req.params.type as "debit" | "credit";
+      const index = parseInt(req.params.index);
+
+      if (type !== "debit" && type !== "credit") {
+        return res.status(400).json({ message: "Invalid type" });
+      }
+
+      const { person, amount } = req.body;
+      if (!person || typeof person !== "string" || person.trim().length === 0) {
+        return res.status(400).json({ message: "Person name is required" });
+      }
+      if (typeof amount !== "number" || amount < 0) {
+        return res.status(400).json({ message: "Amount must be a positive number" });
+      }
+
+      const finance = await storage.updateFinanceEntry(req.userId!, type, index, { person: person.trim(), amount });
+      res.json(finance);
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -636,7 +708,6 @@ export async function registerRoutes(
       const finance = await storage.removeFinanceEntry(req.userId!, type, index);
       res.json(finance);
     } catch (error) {
-      console.error("Remove finance entry error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -647,7 +718,6 @@ export async function registerRoutes(
       const memories = await storage.getMemories(req.userId!);
       res.json(memories);
     } catch (error) {
-      console.error("Get memories error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -662,7 +732,6 @@ export async function registerRoutes(
       const memories = await storage.getMemoriesByDate(req.userId!, date);
       res.json(memories);
     } catch (error) {
-      console.error("Get memories by date error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -677,7 +746,6 @@ export async function registerRoutes(
       const memory = await storage.createMemory(req.userId!, result.data);
       res.json(memory);
     } catch (error) {
-      console.error("Create memory error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -697,7 +765,6 @@ export async function registerRoutes(
       const updated = await storage.updateMemory(req.params.id, result.data);
       res.json(updated);
     } catch (error) {
-      console.error("Update memory error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -712,7 +779,6 @@ export async function registerRoutes(
       await storage.deleteMemory(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Delete memory error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -723,7 +789,6 @@ export async function registerRoutes(
       const wishlist = await storage.getWishlist(req.userId!);
       res.json(wishlist);
     } catch (error) {
-      console.error("Get wishlist error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -738,7 +803,6 @@ export async function registerRoutes(
       const item = await storage.createWishlistItem(req.userId!, result.data);
       res.json(item);
     } catch (error) {
-      console.error("Create wishlist item error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -758,7 +822,6 @@ export async function registerRoutes(
       const updated = await storage.updateWishlistItem(req.params.id, result.data);
       res.json(updated);
     } catch (error) {
-      console.error("Update wishlist item error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -773,7 +836,82 @@ export async function registerRoutes(
       await storage.deleteWishlistItem(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Delete wishlist item error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Daily Task routes
+  app.get("/api/daily-tasks", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const tasks = await storage.getDailyTasks(req.userId!);
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/daily-tasks", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertDailyTaskSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const task = await storage.createDailyTask(req.userId!, result.data);
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/daily-tasks/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const task = await storage.getDailyTask(req.params.id);
+      if (!task || task.userId !== req.userId) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const result = updateDailyTaskSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateDailyTask(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/daily-tasks/:id/toggle", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const task = await storage.getDailyTask(req.params.id);
+      if (!task || task.userId !== req.userId) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const { date } = req.body;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Valid date (YYYY-MM-DD) is required" });
+      }
+
+      const updated = await storage.toggleDailyTaskCompletion(req.params.id, date);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/daily-tasks/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const task = await storage.getDailyTask(req.params.id);
+      if (!task || task.userId !== req.userId) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      await storage.deleteDailyTask(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });

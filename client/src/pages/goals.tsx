@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Target, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { Plus, Target, Trash2, CheckCircle2, Circle, Edit2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ type GoalFormData = z.infer<typeof goalFormSchema>;
 
 export default function GoalsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -49,6 +50,24 @@ export default function GoalsPage() {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to create goal",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: GoalFormData) =>
+      api.patch<Goal>(`/goals/${selectedGoal?.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Goal updated", description: "Your goal has been updated." });
+      handleCloseDialog();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update goal",
         variant: "destructive",
       });
     },
@@ -88,11 +107,22 @@ export default function GoalsPage() {
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
-    form.reset();
+    setSelectedGoal(null);
+    form.reset({ goalName: "" });
+  };
+
+  const handleEdit = (goal: Goal) => {
+    setSelectedGoal(goal);
+    form.reset({ goalName: goal.goalName });
+    setIsDialogOpen(true);
   };
 
   const handleSubmit = (data: GoalFormData) => {
-    createMutation.mutate(data);
+    if (selectedGoal) {
+      updateMutation.mutate(data);
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const handleToggle = (goal: Goal) => {
@@ -123,9 +153,9 @@ export default function GoalsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add New Goal</DialogTitle>
+              <DialogTitle>{selectedGoal ? "Edit Goal" : "Add New Goal"}</DialogTitle>
               <DialogDescription>
-                Create a new goal to track this month
+                {selectedGoal ? "Update your goal name" : "Create a new goal to track this month"}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
@@ -145,8 +175,14 @@ export default function GoalsPage() {
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-goal">
-                  {createMutation.isPending ? <LoadingSpinner size="sm" /> : "Add Goal"}
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-goal">
+                  {(createMutation.isPending || updateMutation.isPending) ? (
+                    <LoadingSpinner size="sm" />
+                  ) : selectedGoal ? (
+                    "Update Goal"
+                  ) : (
+                    "Add Goal"
+                  )}
                 </Button>
               </div>
             </form>
@@ -212,14 +248,24 @@ export default function GoalsPage() {
                         />
                         <span className="font-medium">{goal.goalName}</span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(goal.id)}
-                        data-testid={`button-delete-goal-${goal.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(goal)}
+                          data-testid={`button-edit-goal-${goal.id}`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteMutation.mutate(goal.id)}
+                          data-testid={`button-delete-goal-${goal.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -258,14 +304,24 @@ export default function GoalsPage() {
                           {goal.goalName}
                         </span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(goal.id)}
-                        data-testid={`button-delete-goal-${goal.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(goal)}
+                          data-testid={`button-edit-goal-${goal.id}`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteMutation.mutate(goal.id)}
+                          data-testid={`button-delete-goal-${goal.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

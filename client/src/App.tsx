@@ -19,6 +19,7 @@ import PlansPage from "@/pages/plans";
 import MemoriesPage from "@/pages/memories";
 import WishlistPage from "@/pages/wishlist";
 import FinancePage from "@/pages/finance";
+import DailyTasksPage from "@/pages/daily-tasks";
 import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
 
@@ -113,6 +114,9 @@ function Router() {
       </Route>
       <Route path="/finance">
         <ProtectedLayout component={FinancePage} />
+      </Route>
+      <Route path="/daily-tasks">
+        <ProtectedLayout component={DailyTasksPage} />
       </Route>
       <Route path="/profile">
         <ProtectedLayout component={ProfilePage} />

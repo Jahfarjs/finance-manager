@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, TrendingUp, TrendingDown, ArrowLeftRight, Trash2 } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, ArrowLeftRight, Trash2, Edit2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ type FinanceFormData = z.infer<typeof financeFormSchema>;
 
 export default function FinancePage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<{ type: "debit" | "credit"; index: number } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -57,6 +58,24 @@ export default function FinancePage() {
     },
   });
 
+  const updateEntryMutation = useMutation({
+    mutationFn: (data: FinanceFormData & { index: number }) =>
+      api.put<Finance>(`/finance/entry/${data.type}/${data.index}`, { person: data.person, amount: data.amount }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Entry updated", description: "Finance entry has been updated." });
+      handleCloseDialog();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update entry",
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteEntryMutation = useMutation({
     mutationFn: ({ type, index }: { type: "debit" | "credit"; index: number }) =>
       api.delete(`/finance/entry/${type}/${index}`),
@@ -76,11 +95,22 @@ export default function FinancePage() {
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
-    form.reset();
+    setEditingEntry(null);
+    form.reset({ type: "debit", person: "", amount: 0 });
+  };
+
+  const handleEdit = (type: "debit" | "credit", index: number, entry: { person: string; amount: number }) => {
+    setEditingEntry({ type, index });
+    form.reset({ type, person: entry.person, amount: entry.amount });
+    setIsDialogOpen(true);
   };
 
   const handleSubmit = (data: FinanceFormData) => {
-    addEntryMutation.mutate(data);
+    if (editingEntry) {
+      updateEntryMutation.mutate({ ...data, index: editingEntry.index });
+    } else {
+      addEntryMutation.mutate(data);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -114,9 +144,9 @@ export default function FinancePage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Finance Entry</DialogTitle>
+              <DialogTitle>{editingEntry ? "Edit Finance Entry" : "Add Finance Entry"}</DialogTitle>
               <DialogDescription>
-                Record a debit (money you owe) or credit (money owed to you)
+                {editingEntry ? "Update the entry details" : "Record a debit (money you owe) or credit (money owed to you)"}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
@@ -164,8 +194,14 @@ export default function FinancePage() {
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={addEntryMutation.isPending} data-testid="button-submit-entry">
-                  {addEntryMutation.isPending ? <LoadingSpinner size="sm" /> : "Add Entry"}
+                <Button type="submit" disabled={addEntryMutation.isPending || updateEntryMutation.isPending} data-testid="button-submit-entry">
+                  {(addEntryMutation.isPending || updateEntryMutation.isPending) ? (
+                    <LoadingSpinner size="sm" />
+                  ) : editingEntry ? (
+                    "Update Entry"
+                  ) : (
+                    "Add Entry"
+                  )}
                 </Button>
               </div>
             </form>
@@ -239,6 +275,14 @@ export default function FinancePage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleEdit("debit", index, entry)}
+                          data-testid={`button-edit-debit-${index}`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => deleteEntryMutation.mutate({ type: "debit", index })}
                           data-testid={`button-delete-debit-${index}`}
                         >
@@ -284,6 +328,14 @@ export default function FinancePage() {
                         <span className="font-mono font-semibold text-primary">
                           {formatCurrency(entry.amount)}
                         </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit("credit", index, entry)}
+                          data-testid={`button-edit-credit-${index}`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

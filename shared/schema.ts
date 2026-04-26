@@ -17,10 +17,20 @@ export const loginSchema = z.object({
 });
 export const updateUserSchema = userSchema.omit({ id: true, password: true, createdAt: true });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your new password"),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
 export type User = z.infer<typeof userSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginCredentials = z.infer<typeof loginSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
+export type ChangePassword = z.infer<typeof changePasswordSchema>;
 
 // Expense Item
 export const expenseItemSchema = z.object({
@@ -112,7 +122,7 @@ export type InsertGoal = z.infer<typeof insertGoalSchema>;
 
 // EMI Schedule Item
 export const emiScheduleItemSchema = z.object({
-  month: z.string(),
+  date: z.string(), // YYYY-MM-DD format for all frequencies
   amount: z.number(),
   status: z.enum(["paid", "unpaid"]),
 });
@@ -122,19 +132,27 @@ export const emiSchema = z.object({
   id: z.string(),
   userId: z.string(),
   emiTitle: z.string().min(1, "EMI title is required"),
-  startMonth: z.string(),
-  emiAmountPerMonth: z.number().min(1, "Amount must be positive"),
-  emiDuration: z.number().min(1, "Duration must be at least 1 month"),
+  startMonth: z.string(), // kept for backward compat, start date in YYYY-MM or YYYY-MM-DD
+  paymentFrequency: z.enum(["monthly", "weekly", "twice_monthly", "custom"]).default("monthly"),
+  customIntervalDays: z.number().optional(), // only for custom frequency
+  emiAmountPerMonth: z.number().min(1, "Amount must be positive"), // amount per installment
+  emiDuration: z.number().min(1, "Duration must be at least 1"), // number of installments
   emiSchedule: z.array(emiScheduleItemSchema), // auto-generated
   remainingAmount: z.number(), // auto-calculated
   totalAmount: z.number(), // auto-calculated
+  isKuri: z.boolean().default(false), // true = Kuri/Chit Fund type
+  kuriReceivedAmount: z.number().default(0), // amount received back
+  kuriReceivedDate: z.string().optional(), // when received
 });
 
 export const insertEmiSchema = z.object({
   emiTitle: z.string().min(1, "EMI title is required"),
-  startMonth: z.string(),
+  startMonth: z.string(), // YYYY-MM for monthly, YYYY-MM-DD for others
+  paymentFrequency: z.enum(["monthly", "weekly", "twice_monthly", "custom"]).default("monthly"),
+  customIntervalDays: z.number().optional(),
   emiAmountPerMonth: z.number().min(1, "Amount must be positive"),
-  emiDuration: z.number().min(1, "Duration must be at least 1 month"),
+  emiDuration: z.number().min(1, "Duration must be at least 1"),
+  isKuri: z.boolean().default(false),
 });
 
 export type EMI = z.infer<typeof emiSchema>;
@@ -234,6 +252,32 @@ export const updateWishlistSchema = z.object({
 export type Wishlist = z.infer<typeof wishlistSchema>;
 export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
 export type UpdateWishlist = z.infer<typeof updateWishlistSchema>;
+
+// Daily Task Sheet Schema
+export const dailyTaskSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  taskName: z.string().min(1, "Task name is required"),
+  frequency: z.enum(["daily", "weekly", "monthly"]),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  completions: z.array(z.string()), // Array of date strings (YYYY-MM-DD) when task was completed
+  createdAt: z.string(),
+});
+
+export const insertDailyTaskSchema = z.object({
+  taskName: z.string().min(1, "Task name is required"),
+  frequency: z.enum(["daily", "weekly", "monthly"]),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+});
+
+export const updateDailyTaskSchema = z.object({
+  taskName: z.string().min(1, "Task name is required").optional(),
+  frequency: z.enum(["daily", "weekly", "monthly"]).optional(),
+});
+
+export type DailyTask = z.infer<typeof dailyTaskSchema>;
+export type InsertDailyTask = z.infer<typeof insertDailyTaskSchema>;
+export type UpdateDailyTask = z.infer<typeof updateDailyTaskSchema>;
 
 // API Response Types
 export interface AuthResponse {

@@ -24,6 +24,9 @@ import type {
   Wishlist,
   InsertWishlist,
   UpdateWishlist,
+  DailyTask,
+  InsertDailyTask,
+  UpdateDailyTask,
 } from "@shared/schema";
 import { addMonths, format, parse } from "date-fns";
 import { UserModel } from "./models/User";
@@ -34,6 +37,7 @@ import { PlanModel } from "./models/Plan";
 import { FinanceModel } from "./models/Finance";
 import { PersonalMemoryModel } from "./models/PersonalMemory";
 import { WishlistModel } from "./models/Wishlist";
+import { DailyTaskModel } from "./models/DailyTask";
 
 export interface IStorage {
   // User methods
@@ -64,7 +68,9 @@ export interface IStorage {
   getEmis(userId: string): Promise<EMI[]>;
   getEmi(id: string): Promise<EMI | undefined>;
   createEmi(userId: string, data: InsertEMI): Promise<EMI>;
+  updateEmi(id: string, data: InsertEMI): Promise<EMI | undefined>;
   updateEmiSchedule(id: string, monthIndex: number, status: "paid" | "unpaid"): Promise<EMI | undefined>;
+  updateKuriReceived(id: string, amount: number, date?: string): Promise<EMI | undefined>;
   deleteEmi(id: string): Promise<boolean>;
 
   // Plan methods
@@ -77,6 +83,7 @@ export interface IStorage {
   // Finance methods
   getFinance(userId: string): Promise<Finance>;
   addFinanceEntry(userId: string, type: "debit" | "credit", entry: FinanceEntry): Promise<Finance>;
+  updateFinanceEntry(userId: string, type: "debit" | "credit", index: number, entry: FinanceEntry): Promise<Finance>;
   removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance>;
 
   // Personal Memory methods
@@ -93,6 +100,14 @@ export interface IStorage {
   createWishlistItem(userId: string, data: InsertWishlist): Promise<Wishlist>;
   updateWishlistItem(id: string, data: UpdateWishlist): Promise<Wishlist | undefined>;
   deleteWishlistItem(id: string): Promise<boolean>;
+
+  // Daily Task methods
+  getDailyTasks(userId: string): Promise<DailyTask[]>;
+  getDailyTask(id: string): Promise<DailyTask | undefined>;
+  createDailyTask(userId: string, data: InsertDailyTask): Promise<DailyTask>;
+  updateDailyTask(id: string, data: UpdateDailyTask): Promise<DailyTask | undefined>;
+  toggleDailyTaskCompletion(id: string, date: string): Promise<DailyTask | undefined>;
+  deleteDailyTask(id: string): Promise<boolean>;
 }
 
 export class MongoStorage implements IStorage {
@@ -421,39 +436,148 @@ export class MongoStorage implements IStorage {
 
   async createEmi(userId: string, data: InsertEMI): Promise<EMI> {
     const id = randomUUID();
-    const startDate = parse(data.startMonth, "yyyy-MM", new Date());
     const totalAmount = data.emiAmountPerMonth * data.emiDuration;
-    
-    // Generate EMI schedule
+    const frequency = data.paymentFrequency || "monthly";
+
+    // Parse start date based on format
+    let startDate: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data.startMonth)) {
+      startDate = parse(data.startMonth, "yyyy-MM-dd", new Date());
+    } else {
+      startDate = parse(data.startMonth, "yyyy-MM", new Date());
+    }
+
+    // Generate EMI schedule based on frequency
     const emiSchedule: EMIScheduleItem[] = [];
     for (let i = 0; i < data.emiDuration; i++) {
-      const month = addMonths(startDate, i);
+      let scheduleDate: Date;
+      switch (frequency) {
+        case "weekly":
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * 7);
+          break;
+        case "twice_monthly":
+          // 1st and 15th pattern: even index = start, odd index = +15 days
+          const monthOffset = Math.floor(i / 2);
+          scheduleDate = addMonths(startDate, monthOffset);
+          if (i % 2 === 1) {
+            scheduleDate.setDate(15);
+          } else {
+            scheduleDate.setDate(1);
+          }
+          break;
+        case "custom":
+          const interval = data.customIntervalDays || 30;
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * interval);
+          break;
+        case "monthly":
+        default:
+          scheduleDate = addMonths(startDate, i);
+          break;
+      }
       emiSchedule.push({
-        month: format(month, "yyyy-MM"),
+        date: format(scheduleDate, "yyyy-MM-dd"),
         amount: data.emiAmountPerMonth,
         status: "unpaid",
       });
     }
-    
+
     const emi: EMI = {
       id,
       userId,
       emiTitle: data.emiTitle,
       startMonth: data.startMonth,
+      paymentFrequency: frequency,
+      customIntervalDays: data.customIntervalDays,
       emiAmountPerMonth: data.emiAmountPerMonth,
       emiDuration: data.emiDuration,
       emiSchedule,
       remainingAmount: totalAmount,
       totalAmount,
+      isKuri: data.isKuri || false,
+      kuriReceivedAmount: 0,
     };
     await EMIModel.create(emi);
     return emi;
   }
 
+  async updateEmi(id: string, data: InsertEMI): Promise<EMI | undefined> {
+    const existingEmi = await EMIModel.findOne({ id }).lean();
+    if (!existingEmi) return undefined;
+
+    const totalAmount = data.emiAmountPerMonth * data.emiDuration;
+    const frequency = data.paymentFrequency || "monthly";
+
+    let startDate: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data.startMonth)) {
+      startDate = parse(data.startMonth, "yyyy-MM-dd", new Date());
+    } else {
+      startDate = parse(data.startMonth, "yyyy-MM", new Date());
+    }
+
+    const newSchedule: EMIScheduleItem[] = [];
+    for (let i = 0; i < data.emiDuration; i++) {
+      let scheduleDate: Date;
+      switch (frequency) {
+        case "weekly":
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * 7);
+          break;
+        case "twice_monthly": {
+          const monthOffset = Math.floor(i / 2);
+          scheduleDate = addMonths(startDate, monthOffset);
+          scheduleDate.setDate(i % 2 === 0 ? 1 : 15);
+          break;
+        }
+        case "custom": {
+          const interval = data.customIntervalDays || 30;
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * interval);
+          break;
+        }
+        default:
+          scheduleDate = addMonths(startDate, i);
+          break;
+      }
+      // Preserve paid status by index position
+      const existingStatus = existingEmi.emiSchedule[i]?.status ?? "unpaid";
+      newSchedule.push({
+        date: format(scheduleDate, "yyyy-MM-dd"),
+        amount: data.emiAmountPerMonth,
+        status: existingStatus,
+      });
+    }
+
+    const paidAmount = newSchedule
+      .filter((s) => s.status === "paid")
+      .reduce((sum, s) => sum + s.amount, 0);
+
+    const updated = await EMIModel.findOneAndUpdate(
+      { id },
+      {
+        $set: {
+          emiTitle: data.emiTitle,
+          startMonth: data.startMonth,
+          paymentFrequency: frequency,
+          customIntervalDays: data.customIntervalDays,
+          emiAmountPerMonth: data.emiAmountPerMonth,
+          emiDuration: data.emiDuration,
+          isKuri: data.isKuri,
+          emiSchedule: newSchedule,
+          totalAmount,
+          remainingAmount: totalAmount - paidAmount,
+        },
+      },
+      { new: true, lean: true }
+    );
+    return updated || undefined;
+  }
+
   async updateEmiSchedule(id: string, monthIndex: number, status: "paid" | "unpaid"): Promise<EMI | undefined> {
     const emi = await EMIModel.findOne({ id }).lean();
     if (!emi || monthIndex < 0 || monthIndex >= emi.emiSchedule.length) return undefined;
-    
+
     // Update the specific schedule item
     const updatePath = `emiSchedule.${monthIndex}.status`;
     await EMIModel.updateOne(
@@ -476,6 +600,17 @@ export class MongoStorage implements IStorage {
     );
     
     return finalEmi || undefined;
+  }
+
+  async updateKuriReceived(id: string, amount: number, date?: string): Promise<EMI | undefined> {
+    const updateData: any = { kuriReceivedAmount: amount };
+    if (date) updateData.kuriReceivedDate = date;
+    const emi = await EMIModel.findOneAndUpdate(
+      { id },
+      { $set: updateData },
+      { new: true, lean: true }
+    );
+    return emi || undefined;
   }
 
   async deleteEmi(id: string): Promise<boolean> {
@@ -575,17 +710,17 @@ export class MongoStorage implements IStorage {
     return finance;
   }
 
-  async removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance> {
+  async updateFinanceEntry(userId: string, type: "debit" | "credit", index: number, entry: FinanceEntry): Promise<Finance> {
     const finance = await this.getFinance(userId);
-    
+
     if (type === "debit" && index >= 0 && index < finance.debitList.length) {
-      finance.debitList.splice(index, 1);
+      finance.debitList[index] = entry;
       finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
     } else if (type === "credit" && index >= 0 && index < finance.creditList.length) {
-      finance.creditList.splice(index, 1);
+      finance.creditList[index] = entry;
       finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
     }
-    
+
     const updatedFinance = await FinanceModel.findOneAndUpdate(
       { userId },
       {
@@ -598,7 +733,38 @@ export class MongoStorage implements IStorage {
       },
       { new: true, lean: true }
     );
-    
+
+    if (updatedFinance) {
+      const { _id, __v, ...financeWithoutId } = updatedFinance as any;
+      return financeWithoutId as Finance;
+    }
+    return finance;
+  }
+
+  async removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance> {
+    const finance = await this.getFinance(userId);
+
+    if (type === "debit" && index >= 0 && index < finance.debitList.length) {
+      finance.debitList.splice(index, 1);
+      finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
+    } else if (type === "credit" && index >= 0 && index < finance.creditList.length) {
+      finance.creditList.splice(index, 1);
+      finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
+    }
+
+    const updatedFinance = await FinanceModel.findOneAndUpdate(
+      { userId },
+      {
+        $set: {
+          debitList: finance.debitList,
+          creditList: finance.creditList,
+          totalDebit: finance.totalDebit,
+          totalCredit: finance.totalCredit,
+        },
+      },
+      { new: true, lean: true }
+    );
+
     if (updatedFinance) {
       const { _id, __v, ...financeWithoutId } = updatedFinance as any;
       return financeWithoutId as Finance;
@@ -692,6 +858,67 @@ export class MongoStorage implements IStorage {
 
   async deleteWishlistItem(id: string): Promise<boolean> {
     const result = await WishlistModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  // Daily Task methods
+  async getDailyTasks(userId: string): Promise<DailyTask[]> {
+    const tasks = await DailyTaskModel.find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return tasks;
+  }
+
+  async getDailyTask(id: string): Promise<DailyTask | undefined> {
+    const task = await DailyTaskModel.findOne({ id }).lean();
+    return task || undefined;
+  }
+
+  async createDailyTask(userId: string, data: InsertDailyTask): Promise<DailyTask> {
+    const id = randomUUID();
+    const task: DailyTask = {
+      id,
+      userId,
+      taskName: data.taskName,
+      frequency: data.frequency,
+      startDate: data.startDate,
+      completions: [],
+      createdAt: new Date().toISOString(),
+    };
+    await DailyTaskModel.create(task);
+    return task;
+  }
+
+  async updateDailyTask(id: string, data: UpdateDailyTask): Promise<DailyTask | undefined> {
+    const task = await DailyTaskModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return task || undefined;
+  }
+
+  async toggleDailyTaskCompletion(id: string, date: string): Promise<DailyTask | undefined> {
+    const task = await DailyTaskModel.findOne({ id }).lean();
+    if (!task) return undefined;
+
+    let completions: string[];
+    if (task.completions.includes(date)) {
+      completions = task.completions.filter((d) => d !== date);
+    } else {
+      completions = [...task.completions, date];
+    }
+
+    const updated = await DailyTaskModel.findOneAndUpdate(
+      { id },
+      { $set: { completions } },
+      { new: true, lean: true }
+    );
+    return updated || undefined;
+  }
+
+  async deleteDailyTask(id: string): Promise<boolean> {
+    const result = await DailyTaskModel.deleteOne({ id });
     return result.deletedCount > 0;
   }
 }
@@ -805,47 +1032,137 @@ export class MemStorage implements IStorage {
 
   async createEmi(userId: string, data: InsertEMI): Promise<EMI> {
     const id = randomUUID();
-    const startDate = parse(data.startMonth, "yyyy-MM", new Date());
     const totalAmount = data.emiAmountPerMonth * data.emiDuration;
-    
-    // Generate EMI schedule
+    const frequency = data.paymentFrequency || "monthly";
+    let startDate: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data.startMonth)) {
+      startDate = parse(data.startMonth, "yyyy-MM-dd", new Date());
+    } else {
+      startDate = parse(data.startMonth, "yyyy-MM", new Date());
+    }
     const emiSchedule: EMIScheduleItem[] = [];
     for (let i = 0; i < data.emiDuration; i++) {
-      const month = addMonths(startDate, i);
+      let scheduleDate: Date;
+      switch (frequency) {
+        case "weekly":
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * 7);
+          break;
+        case "twice_monthly":
+          const monthOff = Math.floor(i / 2);
+          scheduleDate = addMonths(startDate, monthOff);
+          scheduleDate.setDate(i % 2 === 0 ? 1 : 15);
+          break;
+        case "custom":
+          const interval = data.customIntervalDays || 30;
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * interval);
+          break;
+        default:
+          scheduleDate = addMonths(startDate, i);
+          break;
+      }
       emiSchedule.push({
-        month: format(month, "yyyy-MM"),
+        date: format(scheduleDate, "yyyy-MM-dd"),
         amount: data.emiAmountPerMonth,
         status: "unpaid",
       });
     }
-    
     const emi: EMI = {
-      id,
-      userId,
-      emiTitle: data.emiTitle,
-      startMonth: data.startMonth,
-      emiAmountPerMonth: data.emiAmountPerMonth,
-      emiDuration: data.emiDuration,
-      emiSchedule,
-      remainingAmount: totalAmount,
-      totalAmount,
+      id, userId, emiTitle: data.emiTitle, startMonth: data.startMonth,
+      paymentFrequency: frequency, customIntervalDays: data.customIntervalDays,
+      emiAmountPerMonth: data.emiAmountPerMonth, emiDuration: data.emiDuration,
+      emiSchedule, remainingAmount: totalAmount, totalAmount,
+      isKuri: data.isKuri || false, kuriReceivedAmount: 0,
     };
     this.emis.set(id, emi);
     return emi;
   }
 
+  async updateEmi(id: string, data: InsertEMI): Promise<EMI | undefined> {
+    const emi = this.emis.get(id);
+    if (!emi) return undefined;
+
+    const totalAmount = data.emiAmountPerMonth * data.emiDuration;
+    const frequency = data.paymentFrequency || "monthly";
+    let startDate: Date;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data.startMonth)) {
+      startDate = parse(data.startMonth, "yyyy-MM-dd", new Date());
+    } else {
+      startDate = parse(data.startMonth, "yyyy-MM", new Date());
+    }
+    const newSchedule: EMIScheduleItem[] = [];
+    for (let i = 0; i < data.emiDuration; i++) {
+      let scheduleDate: Date;
+      switch (frequency) {
+        case "weekly":
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * 7);
+          break;
+        case "twice_monthly": {
+          const monthOff = Math.floor(i / 2);
+          scheduleDate = addMonths(startDate, monthOff);
+          scheduleDate.setDate(i % 2 === 0 ? 1 : 15);
+          break;
+        }
+        case "custom": {
+          const interval = data.customIntervalDays || 30;
+          scheduleDate = new Date(startDate);
+          scheduleDate.setDate(startDate.getDate() + i * interval);
+          break;
+        }
+        default:
+          scheduleDate = addMonths(startDate, i);
+          break;
+      }
+      const existingStatus = emi.emiSchedule[i]?.status ?? "unpaid";
+      newSchedule.push({
+        date: format(scheduleDate, "yyyy-MM-dd"),
+        amount: data.emiAmountPerMonth,
+        status: existingStatus,
+      });
+    }
+    const paidAmount = newSchedule
+      .filter((s) => s.status === "paid")
+      .reduce((sum, s) => sum + s.amount, 0);
+    const updatedEmi: EMI = {
+      ...emi,
+      emiTitle: data.emiTitle,
+      startMonth: data.startMonth,
+      paymentFrequency: frequency,
+      customIntervalDays: data.customIntervalDays,
+      emiAmountPerMonth: data.emiAmountPerMonth,
+      emiDuration: data.emiDuration,
+      isKuri: data.isKuri,
+      emiSchedule: newSchedule,
+      totalAmount,
+      remainingAmount: totalAmount - paidAmount,
+    };
+    this.emis.set(id, updatedEmi);
+    return updatedEmi;
+  }
+
   async updateEmiSchedule(id: string, monthIndex: number, status: "paid" | "unpaid"): Promise<EMI | undefined> {
     const emi = this.emis.get(id);
     if (!emi || monthIndex < 0 || monthIndex >= emi.emiSchedule.length) return undefined;
-    
+
     emi.emiSchedule[monthIndex].status = status;
-    
+
     // Recalculate remaining amount
     const paidAmount = emi.emiSchedule
       .filter((s) => s.status === "paid")
       .reduce((sum, s) => sum + s.amount, 0);
     emi.remainingAmount = emi.totalAmount - paidAmount;
     
+    this.emis.set(id, emi);
+    return emi;
+  }
+
+  async updateKuriReceived(id: string, amount: number, date?: string): Promise<EMI | undefined> {
+    const emi = this.emis.get(id);
+    if (!emi) return undefined;
+    emi.kuriReceivedAmount = amount;
+    if (date) emi.kuriReceivedDate = date;
     this.emis.set(id, emi);
     return emi;
   }
@@ -921,9 +1238,24 @@ export class MemStorage implements IStorage {
     return finance;
   }
 
+  async updateFinanceEntry(userId: string, type: "debit" | "credit", index: number, entry: FinanceEntry): Promise<Finance> {
+    const finance = await this.getFinance(userId);
+
+    if (type === "debit" && index >= 0 && index < finance.debitList.length) {
+      finance.debitList[index] = entry;
+      finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
+    } else if (type === "credit" && index >= 0 && index < finance.creditList.length) {
+      finance.creditList[index] = entry;
+      finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
+    }
+
+    this.finances.set(userId, finance);
+    return finance;
+  }
+
   async removeFinanceEntry(userId: string, type: "debit" | "credit", index: number): Promise<Finance> {
     const finance = await this.getFinance(userId);
-    
+
     if (type === "debit" && index >= 0 && index < finance.debitList.length) {
       finance.debitList.splice(index, 1);
       finance.totalDebit = finance.debitList.reduce((sum, e) => sum + e.amount, 0);
@@ -931,7 +1263,7 @@ export class MemStorage implements IStorage {
       finance.creditList.splice(index, 1);
       finance.totalCredit = finance.creditList.reduce((sum, e) => sum + e.amount, 0);
     }
-    
+
     this.finances.set(userId, finance);
     return finance;
   }
@@ -1016,6 +1348,31 @@ export class MemStorage implements IStorage {
   }
 
   async deleteWishlistItem(id: string): Promise<boolean> {
+    return false;
+  }
+
+  // Daily Task methods - stub implementations
+  async getDailyTasks(userId: string): Promise<DailyTask[]> {
+    return [];
+  }
+
+  async getDailyTask(id: string): Promise<DailyTask | undefined> {
+    return undefined;
+  }
+
+  async createDailyTask(userId: string, data: InsertDailyTask): Promise<DailyTask> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  async updateDailyTask(id: string, data: UpdateDailyTask): Promise<DailyTask | undefined> {
+    return undefined;
+  }
+
+  async toggleDailyTaskCompletion(id: string, date: string): Promise<DailyTask | undefined> {
+    return undefined;
+  }
+
+  async deleteDailyTask(id: string): Promise<boolean> {
     return false;
   }
 }
