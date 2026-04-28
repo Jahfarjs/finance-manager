@@ -4,7 +4,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format, parse, startOfMonth, endOfMonth } from "date-fns";
-import { Plus, Trash2, Wallet, Calendar, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Wallet, Calendar, DollarSign, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,15 +21,15 @@ import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { DailyExpense, ExpenseItem } from "@shared/schema";
 
-// Schema for adding expense items to a day
 const expenseDayFormSchema = z.object({
   date: z.date(),
   items: z.array(
     z.object({
       purpose: z.string().min(1, "Purpose is required"),
       amount: z.number().min(0, "Amount must be positive"),
+      type: z.enum(["expense", "earning"]),
     })
-  ).min(1, "At least one expense is required"),
+  ).min(1, "At least one item is required"),
 });
 
 type ExpenseDayFormData = z.infer<typeof expenseDayFormSchema>;
@@ -44,17 +44,14 @@ export default function ExpensesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Get current month's expense data
   const { data: currentMonthExpense, isLoading, error } = useQuery({
     queryKey: ["/api/expenses/month", selectedMonth],
     queryFn: () => api.get<DailyExpense>(`/expenses/month/${selectedMonth}`),
-    retry: false, // Don't retry on 404
+    retry: false,
   });
 
-  // Check if error is 404 (month doesn't exist)
   const monthNotFound = error instanceof ApiError && error.status === 404;
 
-  // Get all months for navigation
   const { data: allMonths } = useQuery({
     queryKey: ["/api/expenses/months"],
     queryFn: () => api.get<DailyExpense[]>("/expenses/months"),
@@ -64,7 +61,7 @@ export default function ExpensesPage() {
     resolver: zodResolver(expenseDayFormSchema),
     defaultValues: {
       date: new Date(),
-      items: [{ purpose: "", amount: 0 }],
+      items: [{ purpose: "", amount: 0, type: "expense" }],
     },
   });
 
@@ -73,7 +70,6 @@ export default function ExpensesPage() {
     name: "items",
   });
 
-  // Create month if it doesn't exist
   const createMonthMutation = useMutation({
     mutationFn: (month: string) =>
       api.post<DailyExpense>("/expenses/month", { month }),
@@ -84,7 +80,6 @@ export default function ExpensesPage() {
     },
   });
 
-  // Update salary
   const updateSalaryMutation = useMutation({
     mutationFn: ({ month, salaryCredited }: { month: string; salaryCredited: number }) =>
       api.put<DailyExpense>(`/expenses/month/${month}/salary`, { salaryCredited }),
@@ -103,7 +98,6 @@ export default function ExpensesPage() {
     },
   });
 
-  // Update balance distribution
   const updateBalanceDistributionMutation = useMutation({
     mutationFn: ({ month, balanceSBI, balanceKGB, balanceCash }: { month: string; balanceSBI: number; balanceKGB: number; balanceCash: number }) =>
       api.put<DailyExpense>(`/expenses/month/${month}/balance-distribution`, { balanceSBI, balanceKGB, balanceCash }),
@@ -121,7 +115,6 @@ export default function ExpensesPage() {
     },
   });
 
-  // Add expense day
   const addDayMutation = useMutation({
     mutationFn: async (data: ExpenseDayFormData) => {
       try {
@@ -130,11 +123,9 @@ export default function ExpensesPage() {
           items: data.items,
         });
       } catch (error: any) {
-        // If month doesn't exist (404), create it first and retry
         if (error instanceof ApiError && error.status === 404) {
           try {
             await createMonthMutation.mutateAsync(selectedMonth);
-            // Retry the add day mutation
             return await api.post<DailyExpense>(`/expenses/month/${selectedMonth}/day`, {
               date: format(data.date, "yyyy-MM-dd"),
               items: data.items,
@@ -150,19 +141,18 @@ export default function ExpensesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/month", selectedMonth] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/months"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Expense added", description: "Your expense has been recorded." });
+      toast({ title: "Entry added", description: "Your entry has been recorded." });
       handleCloseDayDialog();
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to add expense",
+        description: error instanceof Error ? error.message : "Failed to add entry",
         variant: "destructive",
       });
     },
   });
 
-  // Update expense day
   const updateDayMutation = useMutation({
     mutationFn: ({ date, items }: { date: string; items: ExpenseItem[] }) =>
       api.put<DailyExpense>(`/expenses/month/${selectedMonth}/day/${date}`, {
@@ -172,44 +162,42 @@ export default function ExpensesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/month", selectedMonth] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Expense updated", description: "Your expense has been updated." });
+      toast({ title: "Entry updated", description: "Your entry has been updated." });
       handleCloseDayDialog();
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update expense",
+        description: error instanceof Error ? error.message : "Failed to update entry",
         variant: "destructive",
       });
     },
   });
 
-  // Delete expense day
   const deleteDayMutation = useMutation({
     mutationFn: (date: string) =>
       api.delete<DailyExpense>(`/expenses/month/${selectedMonth}/day/${date}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/month", selectedMonth] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Expense deleted", description: "The expense day has been removed." });
+      toast({ title: "Day deleted", description: "The day's entries have been removed." });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete expense",
+        description: error instanceof Error ? error.message : "Failed to delete day",
         variant: "destructive",
       });
     },
   });
 
-  // Delete expense item
   const deleteItemMutation = useMutation({
     mutationFn: ({ date, itemId }: { date: string; itemId: string }) =>
       api.delete<DailyExpense>(`/expenses/month/${selectedMonth}/day/${date}/item/${itemId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/month", selectedMonth] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Item deleted", description: "The expense item has been removed." });
+      toast({ title: "Item deleted", description: "The item has been removed." });
     },
     onError: (error) => {
       toast({
@@ -224,66 +212,77 @@ export default function ExpensesPage() {
     setIsDayDialogOpen(false);
     form.reset({
       date: new Date(),
-      items: [{ purpose: "", amount: 0 }],
+      items: [{ purpose: "", amount: 0, type: "expense" }],
     });
   };
 
   const handleEditDay = (date: string, items: ExpenseItem[]) => {
     form.reset({
       date: parse(date, "yyyy-MM-dd", new Date()),
-      items: items.map((item) => ({ purpose: item.purpose, amount: item.amount })),
+      items: items.map((item) => ({
+        purpose: item.purpose,
+        amount: item.amount,
+        type: (item.type as "expense" | "earning") ?? "expense",
+      })),
     });
     setIsDayDialogOpen(true);
   };
 
   const handleSubmitDay = (data: ExpenseDayFormData) => {
     const dateStr = format(data.date, "yyyy-MM-dd");
-    // Check if day already exists
     const existingDay = currentMonthExpense?.days.find((d) => d.date === dateStr);
-    
+
     if (existingDay) {
-      // Update existing day
-      updateDayMutation.mutate({ date: dateStr, items: data.items });
+      updateDayMutation.mutate({ date: dateStr, items: data.items as ExpenseItem[] });
     } else {
-      // Add new day
       addDayMutation.mutate(data);
     }
   };
 
   const handleMonthChange = (direction: "prev" | "next") => {
     const current = parse(selectedMonth, "yyyy-MM", new Date());
-    const newMonth = direction === "prev" 
-      ? format(new Date(current.getFullYear(), current.getMonth() - 1, 1), "yyyy-MM")
-      : format(new Date(current.getFullYear(), current.getMonth() + 1, 1), "yyyy-MM");
+    const newMonth =
+      direction === "prev"
+        ? format(new Date(current.getFullYear(), current.getMonth() - 1, 1), "yyyy-MM")
+        : format(new Date(current.getFullYear(), current.getMonth() + 1, 1), "yyyy-MM");
     setSelectedMonth(newMonth);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       minimumFractionDigits: 0,
     }).format(amount);
-  };
 
-  const formatMonthName = (month: string) => {
-    const date = parse(month, "yyyy-MM", new Date());
-    return format(date, "MMMM yyyy");
-  };
+  const formatMonthName = (month: string) =>
+    format(parse(month, "yyyy-MM", new Date()), "MMMM yyyy");
 
-  // Calculate stats for current month
   const monthlyTotal = currentMonthExpense?.monthlyTotal || 0;
+  const monthlyEarnings = currentMonthExpense?.monthlyEarnings || 0;
   const salaryCredited = currentMonthExpense?.salaryCredited || 0;
   const balance = currentMonthExpense?.balance || 0;
   const balanceSBI = currentMonthExpense?.balanceSBI || 0;
   const balanceKGB = currentMonthExpense?.balanceKGB || 0;
   const balanceCash = currentMonthExpense?.balanceCash || 0;
 
+  const totalIncome = salaryCredited + monthlyEarnings;
+
+  // Live totals from the form for the dialog summary
+  const formItems = form.watch("items");
+  const formExpenseTotal = formItems.reduce(
+    (sum, item) => (item.type === "expense" ? sum + (Number(item.amount) || 0) : sum),
+    0
+  );
+  const formEarningsTotal = formItems.reduce(
+    (sum, item) => (item.type === "earning" ? sum + (Number(item.amount) || 0) : sum),
+    0
+  );
+
   if (isLoading) {
     return <PageLoader />;
   }
 
-  // Sort days by date
   const sortedDays = currentMonthExpense?.days
     ? [...currentMonthExpense.days].sort((a, b) => a.date.localeCompare(b.date))
     : [];
@@ -293,9 +292,10 @@ export default function ExpensesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-expenses-title">Daily Expenses</h1>
-          <p className="text-muted-foreground">Track and manage your monthly expenses</p>
+          <p className="text-muted-foreground">Track your monthly expenses and earnings</p>
         </div>
         <div className="flex gap-2">
+          {/* Set Salary Dialog */}
           <Dialog open={isSalaryDialogOpen} onOpenChange={setIsSalaryDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" data-testid="button-set-salary">
@@ -333,43 +333,34 @@ export default function ExpensesPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsSalaryDialogOpen(false)}
-                  >
+                  <Button type="button" variant="outline" onClick={() => setIsSalaryDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={updateSalaryMutation.isPending}
-                    data-testid="button-submit-salary"
-                  >
-                    {updateSalaryMutation.isPending ? (
-                      <LoadingSpinner size="sm" />
-                    ) : (
-                      "Update Salary"
-                    )}
+                  <Button type="submit" disabled={updateSalaryMutation.isPending} data-testid="button-submit-salary">
+                    {updateSalaryMutation.isPending ? <LoadingSpinner size="sm" /> : "Update Salary"}
                   </Button>
                 </div>
               </form>
             </DialogContent>
           </Dialog>
+
+          {/* Add Expense / Earning Dialog */}
           <Dialog open={isDayDialogOpen} onOpenChange={(open) => !open && handleCloseDayDialog()}>
             <DialogTrigger asChild>
               <Button onClick={() => setIsDayDialogOpen(true)} data-testid="button-add-expense">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Expense
+                Add Entry
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Add Expense Day</DialogTitle>
+                <DialogTitle>Add Daily Entry</DialogTitle>
                 <DialogDescription>
-                  Add expenses for a specific day in {formatMonthName(selectedMonth)}
+                  Add expenses or earnings for a specific day in {formatMonthName(selectedMonth)}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={form.handleSubmit(handleSubmitDay)} className="space-y-6">
+                {/* Date Picker */}
                 <div className="space-y-2">
                   <Label>Date</Label>
                   <Popover>
@@ -402,65 +393,127 @@ export default function ExpensesPage() {
                   </Popover>
                 </div>
 
+                {/* Items */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <Label>Expense Items</Label>
+                    <Label>Items</Label>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => append({ purpose: "", amount: 0 })}
+                      onClick={() => append({ purpose: "", amount: 0, type: "expense" })}
                       data-testid="button-add-item"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Add Item
                     </Button>
                   </div>
-                  
-                  {fields.map((field, index) => (
-                    <div key={field.id} className="flex gap-3 items-start">
-                      <div className="flex-1 space-y-1">
-                        <Input
-                          placeholder="Purpose (e.g., Food, Travel)"
-                          {...form.register(`items.${index}.purpose`)}
-                          data-testid={`input-purpose-${index}`}
-                        />
-                        {form.formState.errors.items?.[index]?.purpose && (
-                          <p className="text-xs text-destructive">
-                            {form.formState.errors.items[index]?.purpose?.message}
-                          </p>
+
+                  {fields.map((field, index) => {
+                    const itemType = form.watch(`items.${index}.type`);
+                    const isEarning = itemType === "earning";
+
+                    return (
+                      <div
+                        key={field.id}
+                        className={cn(
+                          "flex gap-3 items-start p-3 rounded-lg border",
+                          isEarning ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30" : "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                        )}
+                      >
+                        {/* Type Toggle */}
+                        <div className="flex flex-col gap-1 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => form.setValue(`items.${index}.type`, "expense")}
+                            className={cn(
+                              "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors",
+                              !isEarning
+                                ? "bg-red-500 text-white"
+                                : "text-muted-foreground hover:bg-muted"
+                            )}
+                            title="Mark as Expense"
+                          >
+                            <ArrowDownCircle className="h-3 w-3" />
+                            Exp
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue(`items.${index}.type`, "earning")}
+                            className={cn(
+                              "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors",
+                              isEarning
+                                ? "bg-green-500 text-white"
+                                : "text-muted-foreground hover:bg-muted"
+                            )}
+                            title="Mark as Earning"
+                          >
+                            <ArrowUpCircle className="h-3 w-3" />
+                            Earn
+                          </button>
+                        </div>
+
+                        {/* Purpose */}
+                        <div className="flex-1 space-y-1">
+                          <Input
+                            placeholder={isEarning ? "Source (e.g., Freelance, Bonus)" : "Purpose (e.g., Food, Travel)"}
+                            {...form.register(`items.${index}.purpose`)}
+                            data-testid={`input-purpose-${index}`}
+                          />
+                          {form.formState.errors.items?.[index]?.purpose && (
+                            <p className="text-xs text-destructive">
+                              {form.formState.errors.items[index]?.purpose?.message}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Amount */}
+                        <div className="w-32 space-y-1">
+                          <Input
+                            type="number"
+                            placeholder="Amount"
+                            {...form.register(`items.${index}.amount`, { valueAsNumber: true })}
+                            data-testid={`input-amount-${index}`}
+                          />
+                        </div>
+
+                        {/* Remove */}
+                        {fields.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => remove(index)}
+                            data-testid={`button-remove-${index}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         )}
                       </div>
-                      <div className="w-32 space-y-1">
-                        <Input
-                          type="number"
-                          placeholder="Amount"
-                          {...form.register(`items.${index}.amount`, { valueAsNumber: true })}
-                          data-testid={`input-amount-${index}`}
-                        />
-                      </div>
-                      {fields.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(index)}
-                          data-testid={`button-remove-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                  <span className="font-medium">Total</span>
-                  <span className="text-xl font-mono font-bold">
-                    {formatCurrency(
-                      form.watch("items").reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-                    )}
-                  </span>
+                {/* Summary */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
+                    <span className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-1">
+                      <TrendingDown className="h-4 w-4" />
+                      Expenses
+                    </span>
+                    <span className="font-mono font-bold text-red-700 dark:text-red-400">
+                      {formatCurrency(formExpenseTotal)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg">
+                    <span className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-1">
+                      <TrendingUp className="h-4 w-4" />
+                      Earnings
+                    </span>
+                    <span className="font-mono font-bold text-green-700 dark:text-green-400">
+                      {formatCurrency(formEarningsTotal)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-3">
@@ -472,10 +525,10 @@ export default function ExpensesPage() {
                     disabled={addDayMutation.isPending || updateDayMutation.isPending}
                     data-testid="button-submit-expense"
                   >
-                    {(addDayMutation.isPending || updateDayMutation.isPending) ? (
+                    {addDayMutation.isPending || updateDayMutation.isPending ? (
                       <LoadingSpinner size="sm" />
                     ) : (
-                      "Add Expense"
+                      "Save Entry"
                     )}
                   </Button>
                 </div>
@@ -500,9 +553,14 @@ export default function ExpensesPage() {
             <div className="text-center">
               <h2 className="text-2xl font-bold">{formatMonthName(selectedMonth)}</h2>
               {currentMonthExpense && (
-                <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                  <span>Salary: {formatCurrency(salaryCredited)}</span>
-                  <span>Balance: {formatCurrency(balance)}</span>
+                <div className="flex flex-wrap justify-center gap-4 mt-2 text-sm">
+                  <span className="text-muted-foreground">Salary: {formatCurrency(salaryCredited)}</span>
+                  {monthlyEarnings > 0 && (
+                    <span className="text-green-600 dark:text-green-400 font-medium">
+                      + Earnings: {formatCurrency(monthlyEarnings)}
+                    </span>
+                  )}
+                  <span className="text-muted-foreground">Balance: {formatCurrency(balance)}</span>
                 </div>
               )}
             </div>
@@ -518,6 +576,54 @@ export default function ExpensesPage() {
         </CardContent>
       </Card>
 
+      {/* Monthly Stats Cards */}
+      {currentMonthExpense && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="border-green-200 dark:border-green-900">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Income</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(totalIncome)}</p>
+                  {monthlyEarnings > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Salary {formatCurrency(salaryCredited)} + Earnings {formatCurrency(monthlyEarnings)}
+                    </p>
+                  )}
+                </div>
+                <TrendingUp className="h-8 w-8 text-green-500 opacity-60" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-red-200 dark:border-red-900">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Expenses</p>
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(monthlyTotal)}</p>
+                </div>
+                <TrendingDown className="h-8 w-8 text-red-500 opacity-60" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className={balance >= 0 ? "border-blue-200 dark:border-blue-900" : "border-orange-200 dark:border-orange-900"}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Balance</p>
+                  <p className={cn("text-2xl font-bold", balance >= 0 ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400")}>
+                    {formatCurrency(balance)}
+                  </p>
+                </div>
+                <Wallet className={cn("h-8 w-8 opacity-60", balance >= 0 ? "text-blue-500" : "text-orange-500")} />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Balance Distribution */}
       {currentMonthExpense && (
         <Card>
@@ -525,9 +631,7 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Balance Distribution</CardTitle>
-                <CardDescription>
-                  Total Balance: {formatCurrency(balance)}
-                </CardDescription>
+                <CardDescription>Total Balance: {formatCurrency(balance)}</CardDescription>
               </div>
               <Dialog open={isBalanceDistributionDialogOpen} onOpenChange={setIsBalanceDistributionDialogOpen}>
                 <DialogTrigger asChild>
@@ -551,7 +655,7 @@ export default function ExpensesPage() {
                       const kgb = parseFloat(formData.get("kgb") as string) || 0;
                       const cash = parseFloat(formData.get("cash") as string) || 0;
                       const total = sbi + kgb + cash;
-                      
+
                       if (Math.abs(total - balance) > 0.01) {
                         toast({
                           title: "Invalid distribution",
@@ -560,7 +664,7 @@ export default function ExpensesPage() {
                         });
                         return;
                       }
-                      
+
                       updateBalanceDistributionMutation.mutate({
                         month: selectedMonth,
                         balanceSBI: sbi,
@@ -572,57 +676,22 @@ export default function ExpensesPage() {
                   >
                     <div className="space-y-2">
                       <Label htmlFor="sbi">SBI Amount</Label>
-                      <Input
-                        id="sbi"
-                        name="sbi"
-                        type="number"
-                        placeholder="Enter SBI amount"
-                        defaultValue={balanceSBI}
-                        step="0.01"
-                        min="0"
-                      />
+                      <Input id="sbi" name="sbi" type="number" placeholder="Enter SBI amount" defaultValue={balanceSBI} step="0.01" min="0" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="kgb">KGB Amount</Label>
-                      <Input
-                        id="kgb"
-                        name="kgb"
-                        type="number"
-                        placeholder="Enter KGB amount"
-                        defaultValue={balanceKGB}
-                        step="0.01"
-                        min="0"
-                      />
+                      <Input id="kgb" name="kgb" type="number" placeholder="Enter KGB amount" defaultValue={balanceKGB} step="0.01" min="0" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="cash">Cash Amount</Label>
-                      <Input
-                        id="cash"
-                        name="cash"
-                        type="number"
-                        placeholder="Enter Cash amount"
-                        defaultValue={balanceCash}
-                        step="0.01"
-                        min="0"
-                      />
+                      <Input id="cash" name="cash" type="number" placeholder="Enter Cash amount" defaultValue={balanceCash} step="0.01" min="0" />
                     </div>
                     <div className="flex justify-end gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsBalanceDistributionDialogOpen(false)}
-                      >
+                      <Button type="button" variant="outline" onClick={() => setIsBalanceDistributionDialogOpen(false)}>
                         Cancel
                       </Button>
-                      <Button
-                        type="submit"
-                        disabled={updateBalanceDistributionMutation.isPending}
-                      >
-                        {updateBalanceDistributionMutation.isPending ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          "Update Distribution"
-                        )}
+                      <Button type="submit" disabled={updateBalanceDistributionMutation.isPending}>
+                        {updateBalanceDistributionMutation.isPending ? <LoadingSpinner size="sm" /> : "Update Distribution"}
                       </Button>
                     </div>
                   </form>
@@ -632,48 +701,34 @@ export default function ExpensesPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="p-4 rounded-lg border bg-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">SBI</p>
-                    <p className="text-2xl font-bold">{formatCurrency(balanceSBI)}</p>
-                  </div>
+              {[
+                { label: "SBI", value: balanceSBI },
+                { label: "KGB", value: balanceKGB },
+                { label: "Cash", value: balanceCash },
+              ].map(({ label, value }) => (
+                <div key={label} className="p-4 rounded-lg border bg-card">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="text-2xl font-bold">{formatCurrency(value)}</p>
                 </div>
-              </div>
-              <div className="p-4 rounded-lg border bg-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">KGB</p>
-                    <p className="text-2xl font-bold">{formatCurrency(balanceKGB)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 rounded-lg border bg-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Cash</p>
-                    <p className="text-2xl font-bold">{formatCurrency(balanceCash)}</p>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Current Month Expenses */}
+      {/* Daily Entries List */}
       {monthNotFound || !currentMonthExpense || sortedDays.length === 0 ? (
         <Card>
           <CardContent className="p-0">
             <EmptyState
               icon={Wallet}
-              title={monthNotFound ? "Month not created yet" : "No expenses for this month"}
+              title={monthNotFound ? "Month not created yet" : "No entries for this month"}
               description={
                 monthNotFound
-                  ? "Create this month by adding your first expense day."
-                  : "Start tracking your expenses by adding your first expense day."
+                  ? "Create this month by adding your first entry."
+                  : "Start tracking by adding your first expense or earning."
               }
-              actionLabel="Add First Expense"
+              actionLabel="Add First Entry"
               onAction={() => setIsDayDialogOpen(true)}
             />
           </CardContent>
@@ -681,76 +736,105 @@ export default function ExpensesPage() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{formatMonthName(selectedMonth)} Expenses</CardTitle>
+            <CardTitle>{formatMonthName(selectedMonth)} Entries</CardTitle>
             <CardDescription>
-              Monthly Total: {formatCurrency(monthlyTotal)} | Balance: {formatCurrency(balance)}
+              Expenses: {formatCurrency(monthlyTotal)} | Earnings: {formatCurrency(monthlyEarnings)} | Balance: {formatCurrency(balance)}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {sortedDays.map((day) => (
-                <div
-                  key={day.date}
-                  className="p-4 rounded-lg border bg-card"
-                  data-testid={`expense-day-${day.date}`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">
-                        {format(parse(day.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d, yyyy")}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-mono font-bold text-primary">
-                        {formatCurrency(day.dayTotal)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditDay(day.date, day.items)}
-                        data-testid={`button-edit-day-${day.date}`}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteDayConfirm({ open: true, date: day.date })}
-                        data-testid={`button-delete-day-${day.date}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {day.items.map((item, idx) => {
-                      const itemId = (item as any)._id?.toString() || idx.toString();
-                      return (
-                        <div
-                          key={itemId}
-                          className="flex items-center justify-between p-2 rounded-md bg-muted"
-                        >
-                          <span className="text-sm">
-                            {item.purpose}: {formatCurrency(item.amount)}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => {
-                              setDeleteItemConfirm({ open: true, date: day.date, itemId });
-                            }}
-                            data-testid={`button-delete-item-${day.date}-${idx}`}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+              {sortedDays.map((day) => {
+                const dayExpenses = day.items.filter((i) => (i as any).type !== "earning");
+                const dayEarningItems = day.items.filter((i) => (i as any).type === "earning");
+                const dayEarningsTotal = day.dayEarnings ?? 0;
+
+                return (
+                  <div
+                    key={day.date}
+                    className="p-4 rounded-lg border bg-card"
+                    data-testid={`expense-day-${day.date}`}
+                  >
+                    {/* Day Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">
+                          {format(parse(day.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d, yyyy")}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          {day.dayTotal > 0 && (
+                            <span className="text-sm font-mono font-bold text-red-600 dark:text-red-400 block">
+                              -{formatCurrency(day.dayTotal)}
+                            </span>
+                          )}
+                          {dayEarningsTotal > 0 && (
+                            <span className="text-sm font-mono font-bold text-green-600 dark:text-green-400 block">
+                              +{formatCurrency(dayEarningsTotal)}
+                            </span>
+                          )}
                         </div>
-                      );
-                    })}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditDay(day.date, day.items)}
+                          data-testid={`button-edit-day-${day.date}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteDayConfirm({ open: true, date: day.date })}
+                          data-testid={`button-delete-day-${day.date}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <div className="space-y-2">
+                      {day.items.map((item, idx) => {
+                        const itemId = (item as any)._id?.toString() || idx.toString();
+                        const isEarning = (item as any).type === "earning";
+                        return (
+                          <div
+                            key={itemId}
+                            className={cn(
+                              "flex items-center justify-between p-2 rounded-md",
+                              isEarning
+                                ? "bg-green-50 dark:bg-green-950/30"
+                                : "bg-red-50 dark:bg-red-950/30"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              {isEarning ? (
+                                <ArrowUpCircle className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                              ) : (
+                                <ArrowDownCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                              )}
+                              <span className={cn("text-sm", isEarning ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300")}>
+                                {item.purpose}: {formatCurrency(item.amount)}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setDeleteItemConfirm({ open: true, date: day.date, itemId })}
+                              data-testid={`button-delete-item-${day.date}-${idx}`}
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -761,18 +845,23 @@ export default function ExpensesPage() {
         onOpenChange={(open) => setDeleteDayConfirm({ open, date: open ? deleteDayConfirm.date : null })}
         onConfirm={() => deleteDayConfirm.date && deleteDayMutation.mutate(deleteDayConfirm.date)}
         variant="delete"
-        title="Delete Expense Day"
-        description="Are you sure you want to delete all expenses for this day? This action cannot be undone."
+        title="Delete Day Entries"
+        description="Are you sure you want to delete all entries for this day? This action cannot be undone."
         isLoading={deleteDayMutation.isPending}
       />
 
       <ConfirmationModal
         open={deleteItemConfirm.open}
-        onOpenChange={(open) => setDeleteItemConfirm({ open, date: open ? deleteItemConfirm.date : null, itemId: open ? deleteItemConfirm.itemId : null })}
-        onConfirm={() => deleteItemConfirm.date && deleteItemConfirm.itemId && deleteItemMutation.mutate({ date: deleteItemConfirm.date, itemId: deleteItemConfirm.itemId })}
+        onOpenChange={(open) =>
+          setDeleteItemConfirm({ open, date: open ? deleteItemConfirm.date : null, itemId: open ? deleteItemConfirm.itemId : null })
+        }
+        onConfirm={() =>
+          deleteItemConfirm.date && deleteItemConfirm.itemId &&
+          deleteItemMutation.mutate({ date: deleteItemConfirm.date, itemId: deleteItemConfirm.itemId })
+        }
         variant="delete"
-        title="Delete Expense Item"
-        description="Are you sure you want to delete this expense item? This action cannot be undone."
+        title="Delete Item"
+        description="Are you sure you want to delete this item? This action cannot be undone."
         isLoading={deleteItemMutation.isPending}
       />
     </div>

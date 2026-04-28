@@ -37,13 +37,15 @@ export const expenseItemSchema = z.object({
   _id: z.string().optional(), // MongoDB _id for items
   purpose: z.string().min(1, "Purpose is required"),
   amount: z.number().min(0, "Amount must be positive"),
+  type: z.enum(["expense", "earning"]).default("expense"),
 });
 
 // Day Schema (within a month)
 export const expenseDaySchema = z.object({
   date: z.string(), // YYYY-MM-DD format
   items: z.array(expenseItemSchema),
-  dayTotal: z.number(), // auto-calculated
+  dayTotal: z.number(), // auto-calculated (expenses only)
+  dayEarnings: z.number().default(0), // auto-calculated (earnings only)
 });
 
 // Daily Expense Schema (MONTH-LEVEL)
@@ -54,8 +56,9 @@ export const dailyExpenseSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"), // YYYY-MM format
   salaryCredited: z.number().default(0),
   days: z.array(expenseDaySchema),
-  monthlyTotal: z.number(), // auto-calculated
-  balance: z.number(), // auto-calculated (salaryCredited - monthlyTotal)
+  monthlyTotal: z.number(), // auto-calculated (expenses only)
+  monthlyEarnings: z.number().default(0), // auto-calculated (daily earnings sum)
+  balance: z.number(), // auto-calculated (salaryCredited + monthlyEarnings - monthlyTotal)
   balanceSBI: z.number().default(0), // Balance in SBI
   balanceKGB: z.number().default(0), // Balance in KGB
   balanceCash: z.number().default(0), // Balance in Cash
@@ -293,4 +296,5 @@ export interface DashboardStats {
   pendingGoals: number;
   activeEmis: number;
   salaryCredited: number;
+  monthlyEarnings: number;
 }

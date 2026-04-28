@@ -179,8 +179,9 @@ export async function registerRoutes(
       const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
       const currentMonthData = expenseMonths.find((m) => m.month === currentMonth);
       const totalExpenses = currentMonthData?.monthlyTotal || 0;
+      const monthlyEarnings = currentMonthData?.monthlyEarnings || 0;
       const salaryCredited = currentMonthData?.salaryCredited || 0;
-      const balance = salaryCredited - totalExpenses;
+      const balance = salaryCredited + monthlyEarnings - totalExpenses;
 
       const pendingGoals = goals.filter((g) => g.status === "pending").length;
       const activeEmis = emis.filter((e) => e.remainingAmount > 0).length;
@@ -193,6 +194,7 @@ export async function registerRoutes(
         pendingGoals,
         activeEmis,
         salaryCredited,
+        monthlyEarnings,
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });

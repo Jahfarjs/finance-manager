@@ -161,24 +161,27 @@ export class MongoStorage implements IStorage {
 
   // Helper function to recalculate totals for a month document
   private async recalculateMonthTotals(monthDoc: DailyExpense): Promise<DailyExpense> {
-    // Calculate dayTotal for each day
     monthDoc.days.forEach((day) => {
-      day.dayTotal = day.items.reduce((sum, item) => sum + item.amount, 0);
+      day.dayTotal = day.items
+        .filter((item) => item.type !== "earning")
+        .reduce((sum, item) => sum + item.amount, 0);
+
+      day.dayEarnings = day.items
+        .filter((item) => item.type === "earning")
+        .reduce((sum, item) => sum + item.amount, 0);
     });
 
-    // Calculate monthlyTotal from all days
     monthDoc.monthlyTotal = monthDoc.days.reduce((sum, day) => sum + day.dayTotal, 0);
+    monthDoc.monthlyEarnings = monthDoc.days.reduce((sum, day) => sum + (day.dayEarnings ?? 0), 0);
+    monthDoc.balance = monthDoc.salaryCredited + monthDoc.monthlyEarnings - monthDoc.monthlyTotal;
 
-    // Calculate balance
-    monthDoc.balance = monthDoc.salaryCredited - monthDoc.monthlyTotal;
-
-    // Save and return
     const updated = await DailyExpenseModel.findOneAndUpdate(
       { id: monthDoc.id },
       {
         $set: {
           days: monthDoc.days,
           monthlyTotal: monthDoc.monthlyTotal,
+          monthlyEarnings: monthDoc.monthlyEarnings,
           balance: monthDoc.balance,
         },
       },
@@ -215,6 +218,7 @@ export class MongoStorage implements IStorage {
       salaryCredited: data.salaryCredited || 0,
       days: [],
       monthlyTotal: 0,
+      monthlyEarnings: 0,
       balance: data.salaryCredited || 0,
       balanceSBI: 0,
       balanceKGB: 0,
@@ -286,11 +290,17 @@ export class MongoStorage implements IStorage {
       };
     } else {
       // Create new day
-      const dayTotal = data.items.reduce((sum, item) => sum + item.amount, 0);
+      const dayTotal = data.items
+        .filter((item) => item.type !== "earning")
+        .reduce((sum, item) => sum + item.amount, 0);
+      const dayEarnings = data.items
+        .filter((item) => item.type === "earning")
+        .reduce((sum, item) => sum + item.amount, 0);
       updatedDays.push({
         date: data.date,
         items: data.items,
         dayTotal,
+        dayEarnings,
       });
     }
 
@@ -315,11 +325,17 @@ export class MongoStorage implements IStorage {
     if (dayIndex < 0) return undefined;
 
     const updatedDays = [...monthDoc.days];
-    const dayTotal = data.items.reduce((sum, item) => sum + item.amount, 0);
+    const dayTotal = data.items
+      .filter((item) => item.type !== "earning")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const dayEarnings = data.items
+      .filter((item) => item.type === "earning")
+      .reduce((sum, item) => sum + item.amount, 0);
     updatedDays[dayIndex] = {
       date: data.date,
       items: data.items,
       dayTotal,
+      dayEarnings,
     };
 
     const updated = await DailyExpenseModel.findOneAndUpdate(

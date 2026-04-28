@@ -5,8 +5,9 @@ const expenseItemSchema = new Schema(
   {
     purpose: { type: String, required: true },
     amount: { type: Number, required: true },
+    type: { type: String, enum: ["expense", "earning"], default: "expense" },
   },
-  { _id: true } // Enable _id for items so we can delete them individually
+  { _id: true }
 );
 
 const expenseDaySchema = new Schema(
@@ -14,6 +15,7 @@ const expenseDaySchema = new Schema(
     date: { type: String, required: true }, // YYYY-MM-DD
     items: { type: [expenseItemSchema], required: true, default: [] },
     dayTotal: { type: Number, required: true, default: 0 },
+    dayEarnings: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -26,6 +28,7 @@ const dailyExpenseSchema = new Schema<DailyExpense>(
     salaryCredited: { type: Number, default: 0 },
     days: { type: [expenseDaySchema], required: true, default: [] },
     monthlyTotal: { type: Number, required: true, default: 0 },
+    monthlyEarnings: { type: Number, default: 0 },
     balance: { type: Number, required: true, default: 0 },
     balanceSBI: { type: Number, default: 0 },
     balanceKGB: { type: Number, default: 0 },
@@ -38,18 +41,20 @@ const dailyExpenseSchema = new Schema<DailyExpense>(
 dailyExpenseSchema.index({ userId: 1, month: 1 }, { unique: true });
 
 // Pre-save hook to recalculate totals
-dailyExpenseSchema.pre("save", async function() {
-  // Calculate dayTotal for each day
+dailyExpenseSchema.pre("save", async function () {
   this.days.forEach((day) => {
-    day.dayTotal = day.items.reduce((sum, item) => sum + item.amount, 0);
+    day.dayTotal = day.items
+      .filter((item) => item.type !== "earning")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    day.dayEarnings = day.items
+      .filter((item) => item.type === "earning")
+      .reduce((sum, item) => sum + item.amount, 0);
   });
 
-  // Calculate monthlyTotal from all days
   this.monthlyTotal = this.days.reduce((sum, day) => sum + day.dayTotal, 0);
-
-  // Calculate balance
-  this.balance = this.salaryCredited - this.monthlyTotal;
+  this.monthlyEarnings = this.days.reduce((sum, day) => sum + (day.dayEarnings ?? 0), 0);
+  this.balance = this.salaryCredited + this.monthlyEarnings - this.monthlyTotal;
 });
 
 export const DailyExpenseModel = mongoose.model<DailyExpense>("DailyExpense", dailyExpenseSchema);
-
