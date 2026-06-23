@@ -930,7 +930,22 @@ export async function registerRoutes(
         return res.status(400).json({ message: "playerId is required" });
       }
       await storage.saveOneSignalPlayerId(req.userId!, playerId);
+      console.log(`[push] Player ID saved for user ${req.userId}: ${playerId}`);
       res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Debug: check push subscription status for the current user
+  app.get("/api/user/push-subscription", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const user = await storage.getUser(req.userId!);
+      res.json({
+        userId: req.userId,
+        oneSignalPlayerId: user?.oneSignalPlayerId ?? null,
+        hasSubscription: !!user?.oneSignalPlayerId,
+      });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }

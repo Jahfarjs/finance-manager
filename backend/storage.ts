@@ -971,9 +971,12 @@ export class MongoStorage implements IStorage {
   }
 
   async getDueRemindersForPush(now: string): Promise<Reminder[]> {
+    // Use $ne: true instead of === false so we also match documents where
+    // the pushSent field is missing entirely (reminders created before the
+    // field was added to the schema have pushSent = undefined in MongoDB).
     return ReminderModel.find({
       status: "pending",
-      pushSent: false,
+      pushSent: { $ne: true },
       remindAt: { $lte: now },
     })
       .sort({ remindAt: 1 })
@@ -996,6 +999,7 @@ export class MongoStorage implements IStorage {
       eventTime: data.eventTime,
       remindAt: data.remindAt,
       status: "pending",
+      pushSent: false,
       createdAt: new Date().toISOString(),
     };
     await ReminderModel.create(reminder);

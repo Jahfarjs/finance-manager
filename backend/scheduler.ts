@@ -8,11 +8,11 @@ export function startReminderScheduler(): void {
   if (schedulerStarted) return;
   schedulerStarted = true;
 
-  // Run immediately on startup, then every 60 seconds
+  // Run once immediately on startup, then every 60 seconds
   void processReminderPushNotifications();
   setInterval(() => void processReminderPushNotifications(), POLL_INTERVAL_MS);
 
-  console.log(`[scheduler] Reminder push scheduler started — polling every ${POLL_INTERVAL_MS / 1000}s`);
+  console.log(`[scheduler] Started — polling every ${POLL_INTERVAL_MS / 1000}s`);
 }
 
 async function processReminderPushNotifications(): Promise<void> {
@@ -22,15 +22,23 @@ async function processReminderPushNotifications(): Promise<void> {
 
     if (dueReminders.length === 0) return;
 
-    console.log(`[scheduler] Found ${dueReminders.length} reminder(s) due for push`);
+    console.log(`[scheduler] ${dueReminders.length} reminder(s) due at ${now}`);
 
     for (const reminder of dueReminders) {
-      // Always mark pushSent first to prevent duplicate sends on retry
-      await storage.markReminderPushSent(reminder.id);
+      console.log(`[scheduler] Processing reminder "${reminder.title}" (id: ${reminder.id}, remindAt: ${reminder.remindAt})`);
 
       const user = await storage.getUser(reminder.userId);
-      if (!user?.oneSignalPlayerId) {
-        console.log(`[scheduler] No push subscription for user ${reminder.userId} — skipping push for "${reminder.title}"`);
+
+      if (!user) {
+        console.warn(`[scheduler] User ${reminder.userId} not found — marking pushSent to skip`);
+        await storage.markReminderPushSent(reminder.id);
+        continue;
+      }
+
+      if (!user.oneSignalPlayerId) {
+        // User has not granted push permission yet — do NOT mark pushSent,
+        // so we retry next cycle in case they subscribe before the event.
+        console.log(`[scheduler] User ${reminder.userId} has no push subscription — will retry next cycle`);
         continue;
       }
 
@@ -39,6 +47,8 @@ async function processReminderPushNotifications(): Promise<void> {
         ? reminder.description
         : `Your event is on ${reminder.eventDate}${reminder.eventTime ? ` at ${reminder.eventTime}` : ""}`;
 
+      console.log(`[scheduler] Sending push to player ${user.oneSignalPlayerId} — "${title}"`);
+
       await sendPushNotification({
         playerIds: [user.oneSignalPlayerId],
         title,
@@ -46,10 +56,12 @@ async function processReminderPushNotifications(): Promise<void> {
         url: "/reminders",
       });
 
-      console.log(`[scheduler] Push dispatched for reminder "${reminder.title}" → user ${reminder.userId}`);
+      // Mark as sent ONLY after the push call succeeds
+      await storage.markReminderPushSent(reminder.id);
+      console.log(`[scheduler] ✓ Push sent + marked for reminder "${reminder.title}"`);
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[scheduler] Error processing reminders: ${msg}`);
+    console.error(`[scheduler] Error: ${msg}`);
   }
 }

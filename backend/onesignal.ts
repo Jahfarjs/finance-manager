@@ -25,7 +25,9 @@ export async function sendPushNotification({
 
   const body = {
     app_id: appId,
-    include_player_ids: playerIds,
+    // SDK v16 uses subscription IDs — target_channel tells OneSignal this is a push subscription
+    include_subscription_ids: playerIds,
+    target_channel: "push",
     headings: { en: title },
     contents: { en: message },
     url,
