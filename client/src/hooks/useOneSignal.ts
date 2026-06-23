@@ -13,13 +13,14 @@ declare global {
  * Initializes OneSignal Web Push SDK for authenticated users.
  *
  * Service worker strategy:
- *   Our existing /sw.js imports OneSignalSDK.sw.js via importScripts().
- *   We tell OneSignal to use /sw.js as its service worker so there is only
- *   ONE worker at scope "/", eliminating the registration conflict.
+ *   /OneSignalSDKWorker.js is the filename OneSignal expects by default.
+ *   That file imports OneSignalSDK.sw.js AND contains our PWA caching logic.
+ *   main.tsx registers /OneSignalSDKWorker.js at scope "/", so there is only
+ *   ONE service worker — no scope conflicts.
  *
  * Subscription flow:
  *   1. Register change listener BEFORE init so no event is missed.
- *   2. Init OneSignal with serviceWorkerPath pointing to our merged sw.js.
+ *   2. Init OneSignal (auto-discovers /OneSignalSDKWorker.js — no override).
  *   3. If user already subscribed → save existing ID immediately.
  *   4. Otherwise call requestPermission() → browser shows the prompt.
  *   5. change listener fires once subscription is confirmed → save ID.
@@ -56,12 +57,11 @@ export function useOneSignal(): void {
           }
         );
 
-        // ── Step 2: init with our merged service worker ───────────────────
-        // /sw.js imports OneSignalSDK.sw.js so there is no scope conflict.
+        // ── Step 2: init — OneSignal auto-uses /OneSignalSDKWorker.js ────
+        // No serviceWorkerPath override needed because our worker file is
+        // already named exactly what OneSignal expects by default.
         await OneSignal.init({
           appId,
-          serviceWorkerPath: "/sw.js",
-          // No custom scope — let OneSignal use the default root scope
           notifyButton: { enable: false },
           allowLocalhostAsSecureOrigin: true,
         });

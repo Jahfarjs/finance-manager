@@ -1,8 +1,6 @@
-// OneSignal Web Push — must be imported FIRST so push events are handled
-// This merges OneSignal's push handling into our PWA service worker,
-// avoiding the "two workers at the same scope" conflict.
-importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');
-
+// NOTE: This file is kept for backward compatibility with existing users
+// who may still have it cached. New installs use /OneSignalSDKWorker.js
+// which handles both PWA caching and OneSignal push notifications.
 const CACHE_NAME = 'fintrack-v1';
 const STATIC_ASSETS = [
   '/',
