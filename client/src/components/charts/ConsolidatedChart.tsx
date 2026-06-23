@@ -60,7 +60,7 @@ export function ConsolidatedChart({ months, emis }: ConsolidatedChartProps) {
   }, [months, emis]);
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <PieChartIcon className="h-5 w-5 text-primary" />
@@ -68,7 +68,7 @@ export function ConsolidatedChart({ months, emis }: ConsolidatedChartProps) {
         </CardTitle>
         <CardDescription>Where your money is going</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4">
         {total === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             No data for this month yet.

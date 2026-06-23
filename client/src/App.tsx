@@ -85,7 +85,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
           </div>
         </header>
-        <main className="flex-1 overflow-auto pb-20">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20">{children}</main>
         <MobileBottomNav />
       </div>
     );

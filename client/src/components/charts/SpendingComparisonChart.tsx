@@ -68,7 +68,7 @@ export function SpendingComparisonChart({ months }: SpendingComparisonChartProps
   }, [months]);
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <TrendingUp className="h-5 w-5 text-primary" />
@@ -78,12 +78,12 @@ export function SpendingComparisonChart({ months }: SpendingComparisonChartProps
           {previousLabel} vs {currentLabel}
         </CardDescription>
       </CardHeader>
-      <CardContent className="pl-0 pr-2 sm:pr-4">
+      <CardContent className="px-4 pb-4">
         {data[0].previous === 0 && data[0].current === 0 && data[1].previous === 0 && data[1].current === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">No data available yet.</p>
         ) : (
           <ChartContainer config={chartConfig} className="h-[220px] w-full">
-            <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 8, right: 16, left: 4, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="category" tickLine={false} axisLine={false} tickMargin={8} fontSize={12} />
               <YAxis

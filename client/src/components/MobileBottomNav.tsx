@@ -78,14 +78,14 @@ export function MobileBottomNav() {
                 key={item.url}
                 href={item.url}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+                  "flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors",
                   isActive
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
                 data-testid={`mobilenav-${item.title.toLowerCase()}`}
               >
-                <item.icon className={cn("h-5 w-5", isActive && "scale-110")} />
+                <item.icon className={cn("h-6 w-6", isActive && "scale-110")} />
                 <span>{item.title}</span>
               </Link>
             );
@@ -94,14 +94,14 @@ export function MobileBottomNav() {
             type="button"
             onClick={() => setMoreOpen(true)}
             className={cn(
-              "flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+              "flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors",
               isMoreActive
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground"
             )}
             data-testid="mobilenav-more"
           >
-            <MoreHorizontal className="h-5 w-5" />
+            <MoreHorizontal className="h-6 w-6" />
             <span>More</span>
           </button>
         </div>
