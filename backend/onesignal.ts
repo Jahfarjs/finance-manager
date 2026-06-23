@@ -7,21 +7,30 @@ interface PushPayload {
   url?: string;
 }
 
+/**
+ * Sends a web push via the OneSignal REST API.
+ * @returns true if OneSignal accepted the notification with ≥1 recipient,
+ *          false otherwise (missing config, API error, or 0 recipients).
+ *          The caller should only mark a reminder as sent when this is true.
+ */
 export async function sendPushNotification({
   playerIds,
   title,
   message,
   url = "/reminders",
-}: PushPayload): Promise<void> {
+}: PushPayload): Promise<boolean> {
   const appId = process.env.ONESIGNAL_APP_ID;
   const apiKey = process.env.ONESIGNAL_REST_API_KEY;
 
   if (!appId || !apiKey) {
-    console.warn("[OneSignal] ONESIGNAL_APP_ID or ONESIGNAL_REST_API_KEY not set — skipping push");
-    return;
+    console.error(
+      "[OneSignal] ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY not set in this environment — cannot send push. " +
+        "Set them in your production env (e.g. Render dashboard)."
+    );
+    return false;
   }
 
-  if (playerIds.length === 0) return;
+  if (playerIds.length === 0) return false;
 
   const body = {
     app_id: appId,
@@ -40,20 +49,26 @@ export async function sendPushNotification({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${apiKey}`,
+        Authorization: `Key ${apiKey}`,
       },
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[OneSignal] Push failed (${response.status}): ${errorText}`);
-    } else {
-      const result = await response.json();
-      console.log(`[OneSignal] Push sent → recipients: ${result.recipients ?? 0}, id: ${result.id}`);
+    const result: any = await response.json().catch(() => ({}));
+
+    if (!response.ok || (Array.isArray(result.errors) && result.errors.length > 0)) {
+      console.error(
+        `[OneSignal] Push failed (${response.status}): ${JSON.stringify(result.errors ?? result)}`
+      );
+      return false;
     }
+
+    const recipients = result.recipients ?? 0;
+    console.log(`[OneSignal] Push accepted → id: ${result.id}, recipients: ${recipients}`);
+    return recipients > 0;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`[OneSignal] Network error: ${msg}`);
+    return false;
   }
 }

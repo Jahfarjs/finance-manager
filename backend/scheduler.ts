@@ -47,18 +47,24 @@ async function processReminderPushNotifications(): Promise<void> {
         ? reminder.description
         : `Your event is on ${reminder.eventDate}${reminder.eventTime ? ` at ${reminder.eventTime}` : ""}`;
 
-      console.log(`[scheduler] Sending push to player ${user.oneSignalPlayerId} — "${title}"`);
+      console.log(`[scheduler] Sending push to subscription ${user.oneSignalPlayerId} — "${title}"`);
 
-      await sendPushNotification({
+      const sent = await sendPushNotification({
         playerIds: [user.oneSignalPlayerId],
         title,
         message: body,
         url: "/reminders",
       });
 
-      // Mark as sent ONLY after the push call succeeds
-      await storage.markReminderPushSent(reminder.id);
-      console.log(`[scheduler] ✓ Push sent + marked for reminder "${reminder.title}"`);
+      if (sent) {
+        // Mark as sent ONLY after OneSignal confirms ≥1 recipient.
+        // If it failed (missing env, API error, 0 recipients), we leave
+        // pushSent untouched so it retries on the next cycle.
+        await storage.markReminderPushSent(reminder.id);
+        console.log(`[scheduler] ✓ Push sent + marked for reminder "${reminder.title}"`);
+      } else {
+        console.warn(`[scheduler] ✗ Push NOT sent for "${reminder.title}" — will retry next cycle`);
+      }
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
