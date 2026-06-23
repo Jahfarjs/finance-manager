@@ -57,14 +57,14 @@ export function useOneSignal(): void {
           }
         });
 
+        // No serviceWorkerPath override — OneSignal auto-discovers
+        // /OneSignalSDKWorker.js at the root (its default expected name).
+        // That file imports OneSignalSDK.sw.js AND has our PWA caching code,
+        // giving ONE worker at scope "/" that works on all platforms incl. iOS.
         await OneSignal.init({
           appId,
           notifyButton: { enable: false },
           allowLocalhostAsSecureOrigin: true,
-          // Isolate OneSignal's worker in its own scope so it never conflicts
-          // with our PWA caching worker (/sw.js at scope "/").
-          serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
-          serviceWorkerParam: { scope: "/push/onesignal/" },
         });
 
         // Associate this device with our stable backend user id (external_id).

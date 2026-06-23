@@ -70,9 +70,12 @@ export async function sendPushNotification({
 
     const result: any = await response.json().catch(() => ({}));
 
-    if (!response.ok || (Array.isArray(result.errors) && result.errors.length > 0)) {
+    const hasErrors = Array.isArray(result.errors) && result.errors.length > 0;
+    const emptyId = !result.id; // OneSignal returns id:"" when targeting fails
+
+    if (!response.ok || hasErrors || emptyId) {
       console.error(
-        `[OneSignal] Push failed (${response.status}): ${JSON.stringify(result.errors ?? result)}`
+        `[OneSignal] Push failed (HTTP ${response.status}): ${JSON.stringify(result)}`
       );
       return false;
     }
