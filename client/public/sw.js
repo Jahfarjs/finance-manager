@@ -1,7 +1,6 @@
-// NOTE: This file is kept for backward compatibility with existing users
-// who may still have it cached. New installs use /OneSignalSDKWorker.js
-// which handles both PWA caching and OneSignal push notifications.
-const CACHE_NAME = 'fintrack-v1';
+// PWA caching service worker (scope "/"). OneSignal push is handled by a
+// separate worker at /push/onesignal/ to avoid scope conflicts.
+const CACHE_NAME = 'fintrack-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',

@@ -4,18 +4,14 @@ import "./index.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-// Register the unified service worker that handles both PWA caching and
-// OneSignal push notifications. OneSignalSDKWorker.js is the exact filename
-// OneSignal expects by default — no serviceWorkerPath override needed.
+// Register the PWA caching service worker at scope "/".
+// OneSignal registers its OWN worker separately at /push/onesignal/ (see
+// useOneSignal.ts), so the two never conflict.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/OneSignalSDKWorker.js", { scope: "/" })
-      .then((reg) => {
-        console.log("[SW] Registered:", reg.scope);
-      })
-      .catch((err) => {
-        console.error("[SW] Registration failed:", err);
-      });
+      .register("/sw.js", { scope: "/" })
+      .then((reg) => console.log("[SW] PWA worker registered:", reg.scope))
+      .catch((err) => console.error("[SW] PWA worker registration failed:", err));
   });
 }

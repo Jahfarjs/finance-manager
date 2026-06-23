@@ -1,7 +1,10 @@
 const ONESIGNAL_API_URL = "https://onesignal.com/api/v1/notifications";
 
 interface PushPayload {
-  playerIds: string[];
+  /** Stable external user id (our backend userId). Preferred targeting. */
+  externalId?: string;
+  /** OneSignal subscription ids. Fallback targeting. */
+  playerIds?: string[];
   title: string;
   message: string;
   url?: string;
@@ -9,11 +12,17 @@ interface PushPayload {
 
 /**
  * Sends a web push via the OneSignal REST API.
- * @returns true if OneSignal accepted the notification with ≥1 recipient,
- *          false otherwise (missing config, API error, or 0 recipients).
- *          The caller should only mark a reminder as sent when this is true.
+ *
+ * Targeting strategy:
+ *   Prefer external_id (stable — set via OneSignal.login(userId) on the client)
+ *   so we are immune to subscription-id churn. Falls back to subscription ids.
+ *
+ * @returns true only if OneSignal accepted the notification with ≥1 recipient.
+ *          The caller must only mark a reminder sent when this is true, so
+ *          transient failures retry on the next cycle.
  */
 export async function sendPushNotification({
+  externalId,
   playerIds,
   title,
   message,
@@ -30,12 +39,8 @@ export async function sendPushNotification({
     return false;
   }
 
-  if (playerIds.length === 0) return false;
-
-  const body = {
+  const body: Record<string, unknown> = {
     app_id: appId,
-    // SDK v16 uses subscription IDs — target_channel tells OneSignal this is a push subscription
-    include_subscription_ids: playerIds,
     target_channel: "push",
     headings: { en: title },
     contents: { en: message },
@@ -43,6 +48,15 @@ export async function sendPushNotification({
     chrome_web_icon: "/logo.png",
     firefox_icon: "/logo.png",
   };
+
+  if (externalId) {
+    body.include_aliases = { external_id: [externalId] };
+  } else if (playerIds && playerIds.length > 0) {
+    body.include_subscription_ids = playerIds;
+  } else {
+    console.error("[OneSignal] No targeting (externalId/playerIds) provided — skipping");
+    return false;
+  }
 
   try {
     const response = await fetch(ONESIGNAL_API_URL, {

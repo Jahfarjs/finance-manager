@@ -36,8 +36,8 @@ async function processReminderPushNotifications(): Promise<void> {
       }
 
       if (!user.oneSignalPlayerId) {
-        // User has not granted push permission yet — do NOT mark pushSent,
-        // so we retry next cycle in case they subscribe before the event.
+        // User has not subscribed yet — do NOT mark pushSent, so we retry
+        // next cycle in case they subscribe before/around the event time.
         console.log(`[scheduler] User ${reminder.userId} has no push subscription — will retry next cycle`);
         continue;
       }
@@ -47,14 +47,27 @@ async function processReminderPushNotifications(): Promise<void> {
         ? reminder.description
         : `Your event is on ${reminder.eventDate}${reminder.eventTime ? ` at ${reminder.eventTime}` : ""}`;
 
-      console.log(`[scheduler] Sending push to subscription ${user.oneSignalPlayerId} — "${title}"`);
+      console.log(`[scheduler] Sending push to user ${reminder.userId} — "${title}"`);
 
-      const sent = await sendPushNotification({
-        playerIds: [user.oneSignalPlayerId],
+      // 1) Try stable external_id targeting (client calls login(userId)).
+      let sent = await sendPushNotification({
+        externalId: reminder.userId,
         title,
         message: body,
         url: "/reminders",
       });
+
+      // 2) Fall back to raw subscription id if external_id had 0 recipients
+      //    (e.g. user subscribed before the login(externalId) code shipped).
+      if (!sent) {
+        console.log(`[scheduler] external_id yielded 0 — retrying with subscription id`);
+        sent = await sendPushNotification({
+          playerIds: [user.oneSignalPlayerId],
+          title,
+          message: body,
+          url: "/reminders",
+        });
+      }
 
       if (sent) {
         // Mark as sent ONLY after OneSignal confirms ≥1 recipient.

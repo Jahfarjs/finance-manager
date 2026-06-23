@@ -10,27 +10,29 @@ declare global {
 }
 
 /**
- * Initializes OneSignal Web Push SDK for authenticated users.
+ * Initializes OneSignal Web Push (SDK v16) for authenticated users.
  *
- * Service worker strategy:
- *   /OneSignalSDKWorker.js is the filename OneSignal expects by default.
- *   That file imports OneSignalSDK.sw.js AND contains our PWA caching logic.
- *   main.tsx registers /OneSignalSDKWorker.js at scope "/", so there is only
- *   ONE service worker — no scope conflicts.
+ * Service-worker isolation (fixes intermittent recipients: 0):
+ *   OneSignal registers its own worker at /push/onesignal/ (its own scope),
+ *   while our PWA caching worker stays at /sw.js (scope "/"). Previously both
+ *   fought for scope "/", flipping the push subscription on/off across reloads.
  *
- * Subscription flow:
- *   1. Register change listener BEFORE init so no event is missed.
- *   2. Init OneSignal (auto-discovers /OneSignalSDKWorker.js — no override).
- *   3. If user already subscribed → save existing ID immediately.
- *   4. Otherwise call requestPermission() → browser shows the prompt.
- *   5. change listener fires once subscription is confirmed → save ID.
+ * Explicit opt-in:
+ *   `Notifications.requestPermission()` grants *browser* permission but does
+ *   not enable the OneSignal subscription. We call
+ *   `OneSignal.User.PushSubscription.optIn()` so notification_types is set and
+ *   OneSignal actually delivers.
+ *
+ * Stable targeting:
+ *   `OneSignal.login(userId)` attaches our backend user id as external_id, so
+ *   the server targets by external_id (stable) with subscription id fallback.
  */
 export function useOneSignal(): void {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const initialized = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated || initialized.current) return;
+    if (!isAuthenticated || !user?.id || initialized.current) return;
 
     const appId = (import.meta as any).env?.VITE_ONESIGNAL_APP_ID as string | undefined;
     if (!appId) {
@@ -39,61 +41,58 @@ export function useOneSignal(): void {
     }
 
     initialized.current = true;
+    const externalId = user.id;
 
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     window.OneSignalDeferred.push(async (OneSignal: any) => {
       try {
-        // ── Step 1: register change listener BEFORE init ──────────────────
-        // This ensures we never miss the subscription event, even if it fires
-        // synchronously during init.
-        OneSignal.User?.PushSubscription?.addEventListener(
-          "change",
-          async (event: any) => {
-            const id: string | null = event?.current?.id ?? null;
-            if (id) {
-              console.log("[OneSignal] Subscription change → saving ID:", id);
-              await savePlayerIdToBackend(id);
-            }
+        // Register the change listener BEFORE init so we never miss the event
+        // that fires once the subscription becomes active.
+        OneSignal.User?.PushSubscription?.addEventListener("change", async (event: any) => {
+          const id: string | null = event?.current?.id ?? null;
+          const optedIn: boolean = event?.current?.optedIn ?? false;
+          console.log("[OneSignal] Subscription change → id:", id, "optedIn:", optedIn);
+          if (id && optedIn) {
+            await savePlayerIdToBackend(id);
           }
-        );
+        });
 
-        // ── Step 2: init — OneSignal auto-uses /OneSignalSDKWorker.js ────
-        // No serviceWorkerPath override needed because our worker file is
-        // already named exactly what OneSignal expects by default.
         await OneSignal.init({
           appId,
           notifyButton: { enable: false },
           allowLocalhostAsSecureOrigin: true,
+          // Isolate OneSignal's worker in its own scope so it never conflicts
+          // with our PWA caching worker (/sw.js at scope "/").
+          serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
+          serviceWorkerParam: { scope: "/push/onesignal/" },
         });
 
-        // ── Step 3: handle already-subscribed users ───────────────────────
-        const existingId: string | null = OneSignal.User?.PushSubscription?.id ?? null;
-        if (existingId) {
-          console.log("[OneSignal] Already subscribed, saving ID:", existingId);
-          await savePlayerIdToBackend(existingId);
-          return;
+        // Associate this device with our stable backend user id (external_id).
+        await OneSignal.login(externalId);
+        console.log("[OneSignal] Logged in with external_id:", externalId);
+
+        // CRITICAL: explicitly opt the subscription in. This both requests
+        // browser permission (if needed) AND enables the push subscription,
+        // setting notification_types so OneSignal will actually deliver.
+        const alreadyOptedIn: boolean = OneSignal.User?.PushSubscription?.optedIn ?? false;
+        if (!alreadyOptedIn) {
+          console.log("[OneSignal] Not opted in — calling optIn()");
+          await OneSignal.User.PushSubscription.optIn();
         }
 
-        // ── Step 4: request permission (shows browser prompt) ─────────────
-        const permission = await OneSignal.Notifications.requestPermission();
-        console.log("[OneSignal] Permission result:", permission);
-
-        if (permission !== "granted") return;
-
-        // ── Step 5: permission granted — get fresh ID ─────────────────────
-        // The change listener above will fire, but also check synchronously
-        // in case it already resolved.
-        const newId: string | null = OneSignal.User?.PushSubscription?.id ?? null;
-        if (newId) {
-          console.log("[OneSignal] New subscription ID:", newId);
-          await savePlayerIdToBackend(newId);
+        // Save the resolved subscription id (fallback targeting path).
+        const id: string | null = OneSignal.User?.PushSubscription?.id ?? null;
+        const optedIn: boolean = OneSignal.User?.PushSubscription?.optedIn ?? false;
+        console.log("[OneSignal] Post-optIn → id:", id, "optedIn:", optedIn);
+        if (id && optedIn) {
+          await savePlayerIdToBackend(id);
         }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`[OneSignal] Init error: ${msg}`);
       }
     });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
 }
 
 async function savePlayerIdToBackend(playerId: string): Promise<void> {
