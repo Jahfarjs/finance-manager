@@ -840,6 +840,16 @@ export default function ExpensesPage() {
         </Card>
       )}
 
+      {/* Floating Action Button — always reachable regardless of scroll position */}
+      <button
+        onClick={() => setIsDayDialogOpen(true)}
+        className="fixed bottom-20 right-4 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 sm:bottom-6"
+        aria-label="Add new expense entry"
+        data-testid="fab-add-expense"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
       <ConfirmationModal
         open={deleteDayConfirm.open}
         onOpenChange={(open) => setDeleteDayConfirm({ open, date: open ? deleteDayConfirm.date : null })}
