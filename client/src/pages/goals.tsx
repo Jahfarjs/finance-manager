@@ -140,10 +140,10 @@ export default function GoalsPage() {
   const completedGoals = goals?.filter((g) => g.status === "completed") || [];
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-goals-title">Monthly Goals</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-goals-title">Monthly Goals</h1>
           <p className="text-muted-foreground">Set and track your monthly goals</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleCloseDialog()}>

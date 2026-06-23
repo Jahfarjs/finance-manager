@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { api } from "@/lib/api";
 import type { DailyTask } from "@shared/schema";
 
@@ -91,6 +92,7 @@ export default function DailyTasksPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
   const { data: tasks, isLoading } = useQuery({
@@ -235,10 +237,10 @@ export default function DailyTasksPage() {
   ];
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Daily Task Sheet</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Daily Task Sheet</h1>
           <p className="text-muted-foreground">
             Track your daily, weekly, and monthly tasks
           </p>
@@ -394,6 +396,70 @@ export default function DailyTasksPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {isMobile ? (
+                  <div className="space-y-3">
+                    {dailyTasks.map((task) => (
+                      <div key={task.id} className="rounded-lg border p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="font-medium text-sm">{task.taskName}</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => handleEdit(task)}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setDeleteConfirm({ open: true, id: task.id })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {weekDates.map((date, i) => {
+                            const key = formatDateKey(date);
+                            const isCompleted = task.completions.includes(key);
+                            const isToday = key === todayKey;
+                            return (
+                              <button
+                                key={key}
+                                onClick={() =>
+                                  toggleMutation.mutate({ taskId: task.id, date: key })
+                                }
+                                className={`flex flex-col items-center gap-1 rounded-md py-1.5 ${
+                                  isToday ? "bg-primary/10" : ""
+                                }`}
+                              >
+                                <span
+                                  className={`text-[10px] ${
+                                    isToday ? "font-bold text-primary" : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {dayNames[i]}
+                                </span>
+                                <span
+                                  className={`flex h-7 w-7 items-center justify-center rounded-md border-2 text-xs font-medium transition-colors ${
+                                    isCompleted
+                                      ? "bg-primary border-primary text-primary-foreground"
+                                      : "border-muted-foreground/30"
+                                  }`}
+                                >
+                                  {isCompleted ? <Check className="h-3.5 w-3.5" /> : date.getDate()}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -500,6 +566,7 @@ export default function DailyTasksPage() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </CardContent>
             </Card>
           )}

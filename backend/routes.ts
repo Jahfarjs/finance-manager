@@ -23,6 +23,8 @@ import {
   updateWishlistSchema,
   insertDailyTaskSchema,
   updateDailyTaskSchema,
+  insertReminderSchema,
+  updateReminderSchema,
 } from "@shared/schema";
 
 // Utility function to get JWT secret - only called at runtime inside route handlers
@@ -912,6 +914,109 @@ export async function registerRoutes(
       }
 
       await storage.deleteDailyTask(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ─── Push subscription ─────────────────────────────────────────────────────
+
+  // Save OneSignal player ID for the authenticated user
+  app.post("/api/user/push-subscription", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { playerId } = req.body;
+      if (!playerId || typeof playerId !== "string") {
+        return res.status(400).json({ message: "playerId is required" });
+      }
+      await storage.saveOneSignalPlayerId(req.userId!, playerId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ─── Reminder routes ───────────────────────────────────────────────────────
+
+  // GET all reminders for user
+  app.get("/api/reminders", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const reminders = await storage.getReminders(req.userId!);
+      res.json(reminders);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // GET pending reminders (remindAt <= now) — used for popup on app open
+  app.get("/api/reminders/pending", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const now = new Date().toISOString();
+      const reminders = await storage.getPendingReminders(req.userId!, now);
+      res.json(reminders);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // POST create reminder
+  app.post("/api/reminders", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const result = insertReminderSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+      const reminder = await storage.createReminder(req.userId!, result.data);
+      res.status(201).json(reminder);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // PUT update reminder
+  app.put("/api/reminders/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const reminder = await storage.getReminder(req.params.id);
+      if (!reminder || reminder.userId !== req.userId) {
+        return res.status(404).json({ message: "Reminder not found" });
+      }
+
+      const result = updateReminderSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+
+      const updated = await storage.updateReminder(req.params.id, result.data);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // PATCH dismiss a reminder
+  app.patch("/api/reminders/:id/dismiss", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const reminder = await storage.getReminder(req.params.id);
+      if (!reminder || reminder.userId !== req.userId) {
+        return res.status(404).json({ message: "Reminder not found" });
+      }
+
+      const updated = await storage.updateReminder(req.params.id, { status: "dismissed" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // DELETE reminder
+  app.delete("/api/reminders/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const reminder = await storage.getReminder(req.params.id);
+      if (!reminder || reminder.userId !== req.userId) {
+        return res.status(404).json({ message: "Reminder not found" });
+      }
+
+      await storage.deleteReminder(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Server error" });

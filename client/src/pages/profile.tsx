@@ -106,10 +106,10 @@ export default function ProfilePage() {
 
   return (
     <>
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-profile-title">Profile</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-profile-title">Profile</h1>
           <p className="text-muted-foreground">Manage your account settings</p>
         </div>
 

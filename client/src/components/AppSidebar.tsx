@@ -12,6 +12,7 @@ import {
   BookOpen,
   Heart,
   ClipboardCheck,
+  Bell,
 } from "lucide-react";
 import {
   Sidebar,
@@ -37,6 +38,7 @@ const navigationItems = [
   { title: "EMI Management", url: "/emi", icon: CreditCard },
   { title: "Goals", url: "/goals", icon: Target },
   { title: "Plans", url: "/plans", icon: Calendar },
+  { title: "Reminders", url: "/reminders", icon: Bell },
   { title: "Memories", url: "/memories", icon: BookOpen },
   { title: "Wishlist", url: "/wishlist", icon: Heart },
   { title: "Finance", url: "/finance", icon: ArrowLeftRight },

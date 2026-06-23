@@ -8,8 +8,10 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { PageLoader } from "@/components/LoadingSpinner";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import AuthPage from "@/pages/auth";
 import DashboardPage from "@/pages/dashboard";
@@ -22,7 +24,16 @@ import WishlistPage from "@/pages/wishlist";
 import FinancePage from "@/pages/finance";
 import DailyTasksPage from "@/pages/daily-tasks";
 import ProfilePage from "@/pages/profile";
+import RemindersPage from "@/pages/reminders";
 import NotFound from "@/pages/not-found";
+import { ReminderPopup } from "@/components/ReminderPopup";
+import { useOneSignal } from "@/hooks/useOneSignal";
+
+/** Runs side-effects that require auth context (OneSignal, etc.) */
+function AppInitializer() {
+  useOneSignal();
+  return null;
+}
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -55,6 +66,31 @@ function AuthRoute() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo.png"
+              alt="FinTrack logo"
+              className="h-8 w-8 rounded-lg object-contain"
+            />
+            <span className="font-semibold">FinTrack</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PWAInstallButton />
+            <ThemeToggle />
+          </div>
+        </header>
+        <main className="flex-1 overflow-auto pb-20">{children}</main>
+        <MobileBottomNav />
+      </div>
+    );
+  }
+
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -125,6 +161,9 @@ function Router() {
       <Route path="/profile">
         <ProtectedLayout component={ProfilePage} />
       </Route>
+      <Route path="/reminders">
+        <ProtectedLayout component={RemindersPage} />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -136,7 +175,9 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <TooltipProvider>
+            <AppInitializer />
             <Router />
+            <ReminderPopup />
             <Toaster />
           </TooltipProvider>
         </AuthProvider>

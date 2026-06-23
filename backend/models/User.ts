@@ -9,6 +9,7 @@ const userSchema = new Schema<User>(
     phone: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     createdAt: { type: String, required: true },
+    oneSignalPlayerId: { type: String },
   },
   { versionKey: false }
 );

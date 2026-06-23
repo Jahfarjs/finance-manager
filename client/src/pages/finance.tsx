@@ -131,10 +131,10 @@ export default function FinancePage() {
   const netBalance = (finance?.totalCredit || 0) - (finance?.totalDebit || 0);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-finance-title">Finance Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-finance-title">Finance Management</h1>
           <p className="text-muted-foreground">Track money you owe and money owed to you</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleCloseDialog()}>

@@ -3,6 +3,8 @@ import { Wallet, TrendingUp, TrendingDown, PiggyBank, Target, CreditCard } from 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/StatCard";
 import { PageLoader } from "@/components/LoadingSpinner";
+import { SpendingComparisonChart } from "@/components/charts/SpendingComparisonChart";
+import { ConsolidatedChart } from "@/components/charts/ConsolidatedChart";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import type { DashboardStats, Goal, EMI, DailyExpense } from "@shared/schema";
@@ -30,6 +32,11 @@ export default function DashboardPage() {
     queryFn: () => api.get<EMI[]>("/emis"),
   });
 
+  const { data: expenseMonths } = useQuery({
+    queryKey: ["/api/expenses/months"],
+    queryFn: () => api.get<DailyExpense[]>("/expenses/months"),
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -46,9 +53,9 @@ export default function DashboardPage() {
   const activeEmis = emis?.filter((e) => e.remainingAmount > 0) || [];
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">
+        <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-dashboard-title">
           Welcome back, {user?.name?.split(" ")[0] || "User"}
         </h1>
         <p className="text-muted-foreground">
@@ -56,7 +63,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           title="Total Expenses"
           value={formatCurrency(stats?.totalExpenses || 0)}
@@ -83,7 +90,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <SpendingComparisonChart months={expenseMonths || []} />
+        <ConsolidatedChart months={expenseMonths || []} emis={emis || []} />
+      </div>
+
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

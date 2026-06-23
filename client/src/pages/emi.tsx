@@ -21,12 +21,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageLoader, LoadingSpinner } from "@/components/LoadingSpinner";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { api } from "@/lib/api";
 import type { EMI } from "@shared/schema";
 
 const emiFormSchema = z.object({
   emiTitle: z.string().min(1, "Title is required"),
   startMonth: z.string().min(1, "Start date is required"),
+  paymentDay: z.number().min(1).max(31).default(1),
   paymentFrequency: z.enum(["monthly", "weekly", "twice_monthly", "custom"]),
   customIntervalDays: z.number().optional(),
   emiAmountPerMonth: z.number().min(1, "Amount must be at least 1"),
@@ -68,6 +70,7 @@ export default function EMIPage() {
   const [activeTab, setActiveTab] = useState<"all" | "emi" | "kuri">("all");
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
   const { data: emis, isLoading } = useQuery({
@@ -80,6 +83,7 @@ export default function EMIPage() {
     defaultValues: {
       emiTitle: "",
       startMonth: format(new Date(), "yyyy-MM"),
+      paymentDay: new Date().getDate(),
       paymentFrequency: "monthly",
       customIntervalDays: 30,
       emiAmountPerMonth: 0,
@@ -90,14 +94,20 @@ export default function EMIPage() {
 
   const watchFrequency = form.watch("paymentFrequency");
   const watchIsKuri = form.watch("isKuri");
+  const watchPaymentDay = form.watch("paymentDay");
+
+  const buildStartDate = (data: EMIFormData): string => {
+    if (/^\d{4}-\d{2}$/.test(data.startMonth)) {
+      const day = String(data.paymentDay || 1).padStart(2, "0");
+      return `${data.startMonth}-${day}`;
+    }
+    return data.startMonth;
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: EMIFormData) => {
-      const payload: any = { ...data };
-      // For non-monthly, convert month input to date format
-      if (data.paymentFrequency !== "monthly" && /^\d{4}-\d{2}$/.test(data.startMonth)) {
-        payload.startMonth = data.startMonth + "-01";
-      }
+      const { paymentDay, ...rest } = data;
+      const payload: any = { ...rest, startMonth: buildStartDate(data) };
       if (data.paymentFrequency !== "custom") {
         delete payload.customIntervalDays;
       }
@@ -120,11 +130,8 @@ export default function EMIPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: { id: string } & EMIFormData) => {
-      const { id, ...rest } = data;
-      const payload: any = { ...rest };
-      if (rest.paymentFrequency !== "monthly" && /^\d{4}-\d{2}$/.test(rest.startMonth)) {
-        payload.startMonth = rest.startMonth + "-01";
-      }
+      const { id, paymentDay, ...rest } = data;
+      const payload: any = { ...rest, startMonth: buildStartDate(data) };
       if (rest.paymentFrequency !== "custom") {
         delete payload.customIntervalDays;
       }
@@ -202,6 +209,7 @@ export default function EMIPage() {
     form.reset({
       emiTitle: "",
       startMonth: format(new Date(), "yyyy-MM"),
+      paymentDay: new Date().getDate(),
       paymentFrequency: "monthly",
       customIntervalDays: 30,
       emiAmountPerMonth: 0,
@@ -210,11 +218,26 @@ export default function EMIPage() {
     });
   };
 
+  const extractPaymentDay = (startMonth: string): number => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startMonth)) {
+      return parseInt(startMonth.split("-")[2], 10);
+    }
+    return 1;
+  };
+
+  const extractYearMonth = (startMonth: string): string => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startMonth)) {
+      return startMonth.substring(0, 7);
+    }
+    return startMonth;
+  };
+
   const handleEdit = (emi: EMI) => {
     setSelectedEmi(emi);
     form.reset({
       emiTitle: emi.emiTitle,
-      startMonth: emi.startMonth,
+      startMonth: extractYearMonth(emi.startMonth),
+      paymentDay: extractPaymentDay(emi.startMonth),
       paymentFrequency: emi.paymentFrequency || "monthly",
       customIntervalDays: emi.customIntervalDays || 30,
       emiAmountPerMonth: emi.emiAmountPerMonth,
@@ -251,6 +274,9 @@ export default function EMIPage() {
       .reduce((sum, s) => sum + s.amount, 0);
   };
 
+  const getNextUnpaidIndex = (emi: EMI) =>
+    emi.emiSchedule.findIndex((s) => s.status === "unpaid");
+
   const getDurationLabel = (freq: string) => {
     switch (freq) {
       case "weekly": return "weeks";
@@ -284,10 +310,10 @@ export default function EMIPage() {
   const kuriCount = emis?.filter((e) => e.isKuri).length || 0;
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-emi-title">EMI & Kuri</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-emi-title">EMI & Kuri</h1>
           <p className="text-muted-foreground">Track EMI payments and Kuri (Chit Fund) contributions</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleCloseDialog()}>
@@ -362,17 +388,50 @@ export default function EMIPage() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="startMonth">
-                  {watchFrequency === "monthly" ? "Start Month" : "Start Date"}
-                </Label>
-                <Input
-                  id="startMonth"
-                  type={watchFrequency === "monthly" ? "month" : "date"}
-                  {...form.register("startMonth")}
-                  data-testid="input-start-month"
-                />
-              </div>
+              {watchFrequency === "monthly" ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="startMonth">Start Month</Label>
+                    <Input
+                      id="startMonth"
+                      type="month"
+                      {...form.register("startMonth")}
+                      data-testid="input-start-month"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payment Date (Day of Month)</Label>
+                    <Select
+                      value={String(watchPaymentDay || 1)}
+                      onValueChange={(val) => form.setValue("paymentDay", parseInt(val, 10))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select day" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60 overflow-y-auto">
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                          <SelectItem key={day} value={String(day)}>
+                            {day}{day === 1 ? "st" : day === 2 ? "nd" : day === 3 ? "rd" : "th"} of every month
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Payment will be due on the {watchPaymentDay || 1}{watchPaymentDay === 1 ? "st" : watchPaymentDay === 2 ? "nd" : watchPaymentDay === 3 ? "rd" : "th"} of each month
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="startMonth">Start Date</Label>
+                  <Input
+                    id="startMonth"
+                    type="date"
+                    {...form.register("startMonth")}
+                    data-testid="input-start-month"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -445,7 +504,7 @@ export default function EMIPage() {
 
       {/* Tab Filter */}
       {emis && emis.length > 0 && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant={activeTab === "all" ? "default" : "outline"}
             size="sm"
@@ -591,10 +650,11 @@ export default function EMIPage() {
                           {getFrequencyDescription(emi)}
                         </CardDescription>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex shrink-0 items-center gap-0.5">
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={(e) => { e.stopPropagation(); handleEdit(emi); }}
                         >
                           <Edit2 className="h-4 w-4" />
@@ -603,6 +663,7 @@ export default function EMIPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-8 w-8"
                             onClick={(e) => {
                               e.stopPropagation();
                               setKuriDialogEmi(emi);
@@ -617,12 +678,13 @@ export default function EMIPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ open: true, id: emi.id }); }}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                         <CollapsibleTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
                             {expandedEmi === emi.id ? (
                               <ChevronUp className="h-4 w-4" />
                             ) : (
@@ -680,7 +742,61 @@ export default function EMIPage() {
                       )}
                     </div>
 
+                    {(() => {
+                      const nextIdx = getNextUnpaidIndex(emi);
+                      if (nextIdx === -1) return null;
+                      const next = emi.emiSchedule[nextIdx];
+                      return (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() =>
+                            updateScheduleMutation.mutate({ emiId: emi.id, monthIndex: nextIdx })
+                          }
+                          disabled={updateScheduleMutation.isPending}
+                        >
+                          <Check className="h-4 w-4 mr-2" />
+                          Mark next paid · {formatCurrency(next.amount)}
+                        </Button>
+                      );
+                    })()}
+
                     <CollapsibleContent>
+                      {isMobile ? (
+                        <div className="mt-4 space-y-2">
+                          {emi.emiSchedule.map((schedule, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">
+                                  {formatScheduleDate((schedule as any).date || (schedule as any).month)}
+                                </p>
+                                <p className="font-mono text-xs text-muted-foreground">
+                                  {formatCurrency(schedule.amount)}
+                                </p>
+                              </div>
+                              {schedule.status === "paid" ? (
+                                <StatusBadge status={schedule.status} />
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="shrink-0"
+                                  onClick={() =>
+                                    updateScheduleMutation.mutate({ emiId: emi.id, monthIndex: index })
+                                  }
+                                  disabled={updateScheduleMutation.isPending}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Pay
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
                       <div className="mt-4 rounded-lg border overflow-hidden">
                         <Table>
                           <TableHeader>
@@ -723,6 +839,7 @@ export default function EMIPage() {
                           </TableBody>
                         </Table>
                       </div>
+                      )}
                     </CollapsibleContent>
                   </CardContent>
                 </Collapsible>

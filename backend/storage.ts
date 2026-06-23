@@ -27,6 +27,9 @@ import type {
   DailyTask,
   InsertDailyTask,
   UpdateDailyTask,
+  Reminder,
+  InsertReminder,
+  UpdateReminder,
 } from "@shared/schema";
 import { addMonths, format, parse } from "date-fns";
 import { UserModel } from "./models/User";
@@ -38,6 +41,7 @@ import { FinanceModel } from "./models/Finance";
 import { PersonalMemoryModel } from "./models/PersonalMemory";
 import { WishlistModel } from "./models/Wishlist";
 import { DailyTaskModel } from "./models/DailyTask";
+import { ReminderModel } from "./models/Reminder";
 
 export interface IStorage {
   // User methods
@@ -108,6 +112,19 @@ export interface IStorage {
   updateDailyTask(id: string, data: UpdateDailyTask): Promise<DailyTask | undefined>;
   toggleDailyTaskCompletion(id: string, date: string): Promise<DailyTask | undefined>;
   deleteDailyTask(id: string): Promise<boolean>;
+
+  // Reminder methods
+  getReminders(userId: string): Promise<Reminder[]>;
+  getPendingReminders(userId: string, now: string): Promise<Reminder[]>;
+  getDueRemindersForPush(now: string): Promise<Reminder[]>;
+  getReminder(id: string): Promise<Reminder | undefined>;
+  createReminder(userId: string, data: InsertReminder): Promise<Reminder>;
+  updateReminder(id: string, data: UpdateReminder): Promise<Reminder | undefined>;
+  markReminderPushSent(id: string): Promise<void>;
+  deleteReminder(id: string): Promise<boolean>;
+
+  // Push subscription
+  saveOneSignalPlayerId(userId: string, playerId: string): Promise<void>;
 }
 
 export class MongoStorage implements IStorage {
@@ -937,6 +954,75 @@ export class MongoStorage implements IStorage {
     const result = await DailyTaskModel.deleteOne({ id });
     return result.deletedCount > 0;
   }
+
+  // Reminder methods
+  async getReminders(userId: string): Promise<Reminder[]> {
+    return ReminderModel.find({ userId }).sort({ remindAt: 1 }).lean();
+  }
+
+  async getPendingReminders(userId: string, now: string): Promise<Reminder[]> {
+    return ReminderModel.find({
+      userId,
+      status: "pending",
+      remindAt: { $lte: now },
+    })
+      .sort({ remindAt: 1 })
+      .lean();
+  }
+
+  async getDueRemindersForPush(now: string): Promise<Reminder[]> {
+    return ReminderModel.find({
+      status: "pending",
+      pushSent: false,
+      remindAt: { $lte: now },
+    })
+      .sort({ remindAt: 1 })
+      .lean();
+  }
+
+  async getReminder(id: string): Promise<Reminder | undefined> {
+    const reminder = await ReminderModel.findOne({ id }).lean();
+    return reminder || undefined;
+  }
+
+  async createReminder(userId: string, data: InsertReminder): Promise<Reminder> {
+    const id = randomUUID();
+    const reminder: Reminder = {
+      id,
+      userId,
+      title: data.title,
+      description: data.description,
+      eventDate: data.eventDate,
+      eventTime: data.eventTime,
+      remindAt: data.remindAt,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    await ReminderModel.create(reminder);
+    return reminder;
+  }
+
+  async updateReminder(id: string, data: UpdateReminder): Promise<Reminder | undefined> {
+    const reminder = await ReminderModel.findOneAndUpdate(
+      { id },
+      { $set: data },
+      { new: true, lean: true }
+    );
+    return reminder || undefined;
+  }
+
+  async markReminderPushSent(id: string): Promise<void> {
+    await ReminderModel.updateOne({ id }, { $set: { pushSent: true } });
+  }
+
+  async deleteReminder(id: string): Promise<boolean> {
+    const result = await ReminderModel.deleteOne({ id });
+    return result.deletedCount > 0;
+  }
+
+  async saveOneSignalPlayerId(userId: string, playerId: string): Promise<void> {
+    await UserModel.updateOne({ id: userId }, { $set: { oneSignalPlayerId: playerId } });
+  }
 }
 
 // Keep MemStorage for backward compatibility if needed
@@ -1390,6 +1476,43 @@ export class MemStorage implements IStorage {
 
   async deleteDailyTask(id: string): Promise<boolean> {
     return false;
+  }
+
+  // Reminder methods - stub implementations
+  async getReminders(userId: string): Promise<Reminder[]> {
+    return [];
+  }
+
+  async getPendingReminders(userId: string, now: string): Promise<Reminder[]> {
+    return [];
+  }
+
+  async getDueRemindersForPush(now: string): Promise<Reminder[]> {
+    return [];
+  }
+
+  async getReminder(id: string): Promise<Reminder | undefined> {
+    return undefined;
+  }
+
+  async createReminder(userId: string, data: InsertReminder): Promise<Reminder> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  async updateReminder(id: string, data: UpdateReminder): Promise<Reminder | undefined> {
+    return undefined;
+  }
+
+  async markReminderPushSent(id: string): Promise<void> {
+    // no-op
+  }
+
+  async deleteReminder(id: string): Promise<boolean> {
+    return false;
+  }
+
+  async saveOneSignalPlayerId(userId: string, playerId: string): Promise<void> {
+    // no-op
   }
 }
 

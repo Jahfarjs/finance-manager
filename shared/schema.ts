@@ -8,6 +8,7 @@ export const userSchema = z.object({
   phone: z.string().min(10, "Phone must be at least 10 digits"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   createdAt: z.string(),
+  oneSignalPlayerId: z.string().optional(),
 });
 
 export const insertUserSchema = userSchema.omit({ id: true, createdAt: true });
@@ -281,6 +282,41 @@ export const updateDailyTaskSchema = z.object({
 export type DailyTask = z.infer<typeof dailyTaskSchema>;
 export type InsertDailyTask = z.infer<typeof insertDailyTaskSchema>;
 export type UpdateDailyTask = z.infer<typeof updateDailyTaskSchema>;
+
+// Reminder Schema
+export const reminderSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  eventTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:mm format").optional(),
+  remindAt: z.string(), // ISO datetime string — when to start showing popup
+  status: z.enum(["pending", "dismissed"]),
+  pushSent: z.boolean().default(false), // true once push notification is dispatched
+  createdAt: z.string(),
+});
+
+export const insertReminderSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  eventTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:mm format").optional(),
+  remindAt: z.string().min(1, "Remind time is required"),
+});
+
+export const updateReminderSchema = z.object({
+  title: z.string().min(1, "Title is required").optional(),
+  description: z.string().optional(),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
+  eventTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:mm format").optional(),
+  remindAt: z.string().optional(),
+  status: z.enum(["pending", "dismissed"]).optional(),
+});
+
+export type Reminder = z.infer<typeof reminderSchema>;
+export type InsertReminder = z.infer<typeof insertReminderSchema>;
+export type UpdateReminder = z.infer<typeof updateReminderSchema>;
 
 // API Response Types
 export interface AuthResponse {
